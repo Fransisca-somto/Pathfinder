@@ -149,7 +149,7 @@ export const deleteFingerprint = async (req: Request, res: Response): Promise<vo
   try {
     const ownerId = req.user.id;
     const vehicleId = req.params.id;
-    const slotId = parseInt(req.params.slotId);
+    const slotId = parseInt(req.params.slotId as string);
 
     // Verify ownership
     const { data: vehicle } = await supabase
@@ -189,7 +189,7 @@ export const toggleFingerprintStatus = async (req: Request, res: Response): Prom
   try {
     const ownerId = req.user.id;
     const vehicleId = req.params.id;
-    const slotId = parseInt(req.params.slotId);
+    const slotId = parseInt(req.params.slotId as string);
     const { isActive } = req.body;
 
     if (typeof isActive !== 'boolean') {
