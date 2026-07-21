@@ -1,0 +1,47 @@
+# Implement MPU-6050 Accelerometer for Crash Detection
+
+Based on your schematic, your tracker uses an **MPU-6050** Accelerometer/Gyroscope. We will implement it to detect high G-force impacts (accidents/crashes) and immediately alert the system.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Hardware Dependency**
+> You will need to install the **Adafruit MPU6050** and **Adafruit Unified Sensor** libraries in your Arduino IDE before uploading the code.
+
+> [!NOTE]
+> **Crash Threshold**
+> I plan to set the crash detection threshold to **3.5G** (approx 34 m/s²). If you want this to be more or less sensitive, please let me know!
+
+## Proposed Changes
+
+### ESP32 Tracker Firmware
+
+#### [NEW] [Accelerometer.ino](file:///c:/Users/Projects/Desktop/Unizik%20Tracker/ESP32_Tracker/Accelerometer.ino)
+- Create a new file to manage the MPU-6050.
+- Initialize I2C communication on pins 21 (SDA) and 22 (SCL).
+- Continuously read the X, Y, and Z accelerometer values.
+- Calculate the total acceleration vector magnitude: `sqrt(x² + y² + z²)`.
+- If magnitude > 34 m/s² (3.5G), publish an MQTT alert to `pathfinder/alerts` with `type: "crash"` and trigger a 10-second cooldown so it doesn't spam alerts.
+
+#### [MODIFY] [ESP32_Tracker.ino](file:///c:/Users/Projects/Desktop/Unizik%20Tracker/ESP32_Tracker/ESP32_Tracker.ino)
+- Call `setupAccelerometer()` inside `setup()`.
+- Call `loopAccelerometer()` inside `loop()`.
+
+---
+
+### Flutter App
+
+#### [MODIFY] [alert_type.dart](file:///c:/Users/Projects/Desktop/Unizik%20Tracker/PathFinder/lib/core/enums/alert_type.dart)
+- Add `crash` to the `AlertType` Enum.
+- Map it to display as **"Crash Detected!"** in the app.
+- Give it a bright red color scheme and the `Icons.car_crash` icon.
+
+## Verification Plan
+
+### Automated/Code Verification
+- I will verify the Dart code compiles successfully after editing `alert_type.dart`.
+
+### Manual Verification
+- You will need to flash the new code to your ESP32.
+- Shake the ESP32 violently or tap it hard against your desk.
+- Verify that a red "Crash Detected!" alert instantly pops up on your Flutter app.

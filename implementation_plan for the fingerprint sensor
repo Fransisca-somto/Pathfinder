@@ -1,0 +1,48 @@
+# Fingerprint Authorization Integration
+
+Based on the schematic, you are using a UART serial fingerprint scanner (like the ZFM, AS608, or R307) connected to **GPIO 32 (RX)** and **GPIO 33 (TX)**. You also have an **ACC Authorization Relay** on **GPIO 26**.
+
+To implement this securely, we need to wire up the logic so that the vehicle cannot be started until a valid fingerprint is scanned.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Fingerprint Enrollment Workflow**
+> How do you want to add *new* drivers/fingerprints to the sensor? 
+> 1. **Remote Enrollment (App -> MQTT -> ESP32)**: You tap "Add Driver" in the Flutter App, the app sends an MQTT command to the ESP32, and the ESP32 waits for a finger to be placed on the scanner to enroll it.
+> 2. **Local Hardcoded Enrollment**: You just use a separate simple Arduino sketch to enroll your fingerprints once, and then the main Tracker code only *reads* them.
+> 
+> *I highly recommend Option 1 so you can manage your fleet entirely from the app!*
+
+> [!NOTE]
+> **Hardware Dependency**
+> You will need to install the **Adafruit Fingerprint Sensor Library** in your Arduino IDE.
+
+## Proposed Changes
+
+### ESP32 Tracker Firmware
+
+#### [NEW] [Fingerprint.ino](file:///c:/Users/Projects/Desktop/Unizik%20Tracker/ESP32_Tracker/Fingerprint.ino)
+- Initialize `HardwareSerial` on pins 32 (RX) and 33 (TX).
+- Wait for a finger to be placed.
+- If the fingerprint matches a stored ID:
+  - Turn **ON** the ACC Authorization Relay (GPIO 26) to allow the engine to start.
+  - Publish an MQTT message to `pathfinder/telemetry` or `pathfinder/auth` saying the vehicle is unlocked by Driver ID X.
+- If the fingerprint fails:
+  - Keep the relay OFF.
+  - Publish an `authFailure` alert to the backend.
+
+#### [MODIFY] [ESP32_Tracker.ino](file:///c:/Users/Projects/Desktop/Unizik%20Tracker/ESP32_Tracker/ESP32_Tracker.ino)
+- Add `setupFingerprint()` and `loopFingerprint()`.
+- Define the `ACC_RELAY_PIN` as `26` and set it to `LOW` on boot.
+
+---
+
+### Node.js Backend & Flutter App (If using App-based Enrollment)
+
+If we go with App-based enrollment:
+- **Backend**: Add an MQTT listener for enrollment success/failure.
+- **Flutter App**: Add a button in the "User Management" or "Fleet" tab to trigger the "Enroll Fingerprint" MQTT command.
+
+## Next Steps
+Please let me know if you want **App-based enrollment** or just **Local reading**, and I will begin writing the code!

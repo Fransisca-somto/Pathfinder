@@ -1,0 +1,39 @@
+# ZW111 Fingerprint Integration
+
+The hardware fingerprint scanner is now fully integrated with your full-stack application! Here is exactly how it works from top to bottom.
+
+## How it Works
+
+### 1. The ACC Authorization Relay
+Your engine's starter or fuel pump relay (connected via `Q2 2N2222` to `GPIO 26`) is set to **Locked** by default when the ESP32 boots up. The vehicle literally cannot start until an authorized finger is scanned.
+
+### 2. Normal Scanning Mode
+Every 500 milliseconds, the ESP32 briefly polls the ZW111 scanner on `Serial1`.
+- If a finger is placed, it checks its local database.
+- If it's a **match**, it drives `GPIO 26` HIGH (unlocking the engine) and pushes a success alert to the backend.
+- If it's **unauthorized**, it keeps the engine locked and instantly fires an `authFailure` alert to your phone.
+
+### 3. Remote Enrollment Mode
+You can now enroll new drivers without touching a single line of Arduino code!
+- In the Flutter App, navigate to the **Vehicle Details** tab and tap **Driver Auth**.
+- Tap the new **Enroll New Fingerprint** button.
+- This hits the Node API's new `/vehicles/:id/enroll` route, which instantly publishes an MQTT command to your vehicle over the `pathfinder/commands` topic.
+- Your ESP32 intercepts the command, pauses normal tracking, and enters Enrollment Mode.
+- It will wait for the driver to place their finger on the sensor twice, build the model, store it locally as ID 1, and alert you on the app when it's done!
+
+---
+
+## 🛠️ Testing Instructions
+
+### Step 1: Install Arduino Libraries
+Before you flash the updated code, ensure you have the **Adafruit Fingerprint Sensor Library** installed in your Arduino IDE (Sketch > Include Library > Manage Libraries).
+
+### Step 2: Restart Your Stack
+1. Restart your **Node.js API** so it registers the new `POST /vehicles/:id/enroll` route.
+2. Hot Restart (`r`) your **Flutter App**.
+
+### Step 3: Trigger an Enrollment
+1. Open the Flutter app, go to **Fleet**, and tap your vehicle to open the details.
+2. Tap the **Driver Auth** button.
+3. Tap **Enroll New Fingerprint**. You will see a success snackbar confirming the API sent the command.
+4. On your ESP32 serial monitor, you will see it enter Enrollment Mode. Place a finger on the sensor, wait for it to say "Remove finger", and then place it again to complete the enrollment!
