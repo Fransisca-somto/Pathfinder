@@ -8,7 +8,7 @@ const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com
 const TELEMETRY_TOPIC = 'pathfinder/telemetry';
 const ALERTS_TOPIC = 'pathfinder/alerts';
 
-let client: mqtt.MqttClient;
+export let mqttClient: mqtt.MqttClient;
 
 // Cache device-to-owner mappings so we don't hit the DB on every MQTT message
 const deviceOwnerCache: Map<string, string> = new Map();
@@ -27,13 +27,13 @@ const OVERSPEED_COOLDOWN_MS = 60000;
 export const initializeMqtt = () => {
   console.log(`[MQTT] Connecting to broker: ${MQTT_BROKER_URL}`);
   
-  client = mqtt.connect(MQTT_BROKER_URL);
+  mqttClient = mqtt.connect(MQTT_BROKER_URL);
 
-  client.on('connect', () => {
+  mqttClient.on('connect', () => {
     console.log('[MQTT] Connected to broker successfully!');
 
     // Subscribe to the topics the ESP32 publishes to
-    client.subscribe([TELEMETRY_TOPIC, ALERTS_TOPIC], (err) => {
+    mqttClient.subscribe([TELEMETRY_TOPIC, ALERTS_TOPIC], (err) => {
       if (err) {
         console.error('[MQTT] Subscribe error:', err);
       } else {
@@ -42,7 +42,7 @@ export const initializeMqtt = () => {
     });
   });
 
-  client.on('message', (topic: string, message: Buffer) => {
+  mqttClient.on('message', (topic: string, message: Buffer) => {
     try {
       const payload = JSON.parse(message.toString());
       console.log(`[MQTT] ${topic} =>`, payload);
@@ -57,22 +57,22 @@ export const initializeMqtt = () => {
     }
   });
 
-  client.on('error', (err) => {
+  mqttClient.on('error', (err) => {
     console.error('[MQTT] Connection error:', err);
   });
 
-  client.on('offline', () => {
+  mqttClient.on('offline', () => {
     console.warn('[MQTT] Client went offline');
   });
 
-  client.on('reconnect', () => {
+  mqttClient.on('reconnect', () => {
     console.log('[MQTT] Reconnecting...');
   });
 };
 
 export const publishCommand = (deviceId: string, command: string, payload: any = {}) => {
-  if (!client || !client.connected) {
-    console.warn('[MQTT] Cannot publish command, client not connected');
+  if (!mqttClient || !mqttClient.connected) {
+    console.warn('[MQTT] Cannot publish command, mqttClient not connected');
     return;
   }
   
@@ -83,7 +83,7 @@ export const publishCommand = (deviceId: string, command: string, payload: any =
     ...payload
   });
   
-  client.publish(topic, message);
+  mqttClient.publish(topic, message);
   console.log(`[MQTT] Published command to ${deviceId}:`, command);
 };
 

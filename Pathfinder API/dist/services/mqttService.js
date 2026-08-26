@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.triggerAlert = exports.clearDeviceCache = exports.publishCommand = exports.initializeMqtt = void 0;
+exports.triggerAlert = exports.clearDeviceCache = exports.publishCommand = exports.initializeMqtt = exports.mqttClient = void 0;
 const mqtt_1 = __importDefault(require("mqtt"));
 const supabase_1 = require("../config/supabase");
 const socketManager_1 = require("../sockets/socketManager");
@@ -12,7 +12,6 @@ const zoneService_1 = require("./zoneService");
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
 const TELEMETRY_TOPIC = 'pathfinder/telemetry';
 const ALERTS_TOPIC = 'pathfinder/alerts';
-let client;
 // Cache device-to-owner mappings so we don't hit the DB on every MQTT message
 const deviceOwnerCache = new Map();
 // Track previous status to detect trip start/end
@@ -25,11 +24,11 @@ const OVERSPEED_THRESHOLD_KMPH = 80;
 const OVERSPEED_COOLDOWN_MS = 60000;
 const initializeMqtt = () => {
     console.log(`[MQTT] Connecting to broker: ${MQTT_BROKER_URL}`);
-    client = mqtt_1.default.connect(MQTT_BROKER_URL);
-    client.on('connect', () => {
+    exports.mqttClient = mqtt_1.default.connect(MQTT_BROKER_URL);
+    exports.mqttClient.on('connect', () => {
         console.log('[MQTT] Connected to broker successfully!');
         // Subscribe to the topics the ESP32 publishes to
-        client.subscribe([TELEMETRY_TOPIC, ALERTS_TOPIC], (err) => {
+        exports.mqttClient.subscribe([TELEMETRY_TOPIC, ALERTS_TOPIC], (err) => {
             if (err) {
                 console.error('[MQTT] Subscribe error:', err);
             }
@@ -38,7 +37,7 @@ const initializeMqtt = () => {
             }
         });
     });
-    client.on('message', (topic, message) => {
+    exports.mqttClient.on('message', (topic, message) => {
         try {
             const payload = JSON.parse(message.toString());
             console.log(`[MQTT] ${topic} =>`, payload);
@@ -53,20 +52,20 @@ const initializeMqtt = () => {
             console.error('[MQTT] Failed to parse message:', message.toString());
         }
     });
-    client.on('error', (err) => {
+    exports.mqttClient.on('error', (err) => {
         console.error('[MQTT] Connection error:', err);
     });
-    client.on('offline', () => {
+    exports.mqttClient.on('offline', () => {
         console.warn('[MQTT] Client went offline');
     });
-    client.on('reconnect', () => {
+    exports.mqttClient.on('reconnect', () => {
         console.log('[MQTT] Reconnecting...');
     });
 };
 exports.initializeMqtt = initializeMqtt;
 const publishCommand = (deviceId, command, payload = {}) => {
-    if (!client || !client.connected) {
-        console.warn('[MQTT] Cannot publish command, client not connected');
+    if (!exports.mqttClient || !exports.mqttClient.connected) {
+        console.warn('[MQTT] Cannot publish command, mqttClient not connected');
         return;
     }
     const topic = 'pathfinder/commands';
@@ -75,7 +74,7 @@ const publishCommand = (deviceId, command, payload = {}) => {
         command,
         ...payload
     });
-    client.publish(topic, message);
+    exports.mqttClient.publish(topic, message);
     console.log(`[MQTT] Published command to ${deviceId}:`, command);
 };
 exports.publishCommand = publishCommand;

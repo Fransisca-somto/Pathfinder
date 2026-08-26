@@ -12,10 +12,12 @@ const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const vehicleRoutes_1 = __importDefault(require("./routes/vehicleRoutes"));
 const alertRoutes_1 = __importDefault(require("./routes/alertRoutes"));
 const zoneRoutes_1 = __importDefault(require("./routes/zoneRoutes"));
+const uploadRoutes_1 = __importDefault(require("./routes/uploadRoutes"));
 const socketManager_1 = require("./sockets/socketManager");
 const mqttService_1 = require("./services/mqttService");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
+app.set('etag', false);
 const PORT = process.env.PORT || 3000;
 // Middleware
 app.use((0, cors_1.default)());
@@ -26,6 +28,7 @@ app.use('/auth', authRoutes_1.default);
 app.use('/vehicles', vehicleRoutes_1.default);
 app.use('/alerts', alertRoutes_1.default);
 app.use('/zones', zoneRoutes_1.default);
+app.use('/api/upload', uploadRoutes_1.default);
 // Basic health check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'PathFinder API is running' });

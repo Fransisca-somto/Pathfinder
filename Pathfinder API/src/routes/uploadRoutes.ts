@@ -35,15 +35,25 @@ router.post('/', upload.single('file'), async (req: Request, res: Response): Pro
       { auth: { persistSession: false } }
     );
 
-    const { data, error } = await adminSupabase.storage
-      .from('media')
-      .upload(fileName, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false
-      });
+    // Retry up to 3 times to handle intermittent network issues
+    let data: any = null;
+    let error: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const result = await adminSupabase.storage
+        .from('media')
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false
+        });
+      data = result.data;
+      error = result.error;
+      if (!error) break;
+      console.warn(`[Upload API] Attempt ${attempt}/3 failed:`, error.message || error);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+    }
 
     if (error) {
-      console.error('[Upload API] Supabase upload error:', error);
+      console.error('[Upload API] Supabase upload error after 3 attempts:', error);
       return res.status(500).json({ error: 'Failed to upload to storage' });
     }
 
@@ -88,7 +98,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response): Pro
 
 router.get('/:deviceId', async (req: Request, res: Response): Promise<any> => {
   try {
-    const { deviceId } = req.params;
+    const deviceId = req.params.deviceId as string;
     
     const { data, error } = await supabase.storage
       .from('media')
