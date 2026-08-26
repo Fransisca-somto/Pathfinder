@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Hardware Simulator</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f5f7fa; color: #333; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 20px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; width: 100%; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>ESP32 Camera Simulator</h2>
+        <p>Use this page to act like the ESP32. It will upload an image to your Railway API, which will trigger the MQTT broadcast to your Flutter App.</p>
+        
+        <form id="uploadForm">
+            <label for="deviceId">Device ID (Make sure this matches the tracker in your app!)</label>
+            <input type="text" id="deviceId" value="tracker_001" required>
+            
+            <label for="imageFile">Select a test image or audio file from your PC</label>
+            <input type="file" id="imageFile" accept="image/*, audio/*" required>
+            
+            <button type="submit">Simulate ESP32 Upload</button>
+        </form>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const deviceId = document.getElementById('deviceId').value;
+            const file = document.getElementById('imageFile').files[0];
+            const status = document.getElementById('status');
+            
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            status.innerHTML = "<span style='color:blue;'>Uploading to Railway API... Please wait.</span>";
+
+            try {
+                // Changed to localhost since the Railway server doesn't have the new code yet!
+                const response = await fetch('http://localhost:3000/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'X-Device-ID': deviceId
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    status.innerHTML = `<span style="color:green;">Success! The API received it and broadcasted to MQTT.</span><br><br>
+                    <a href="${data.url}" target="_blank">View uploaded file in Supabase</a>`;
+                } else {
+                    status.innerHTML = `<span style="color:red;">API Error: ${data.error}</span>`;
+                }
+            } catch (err) {
+                status.innerHTML = `<span style="color:red;">Failed to connect to API: ${err.message}</span>`;
+            }
+        });
+    </script>
+</body>
+</html>

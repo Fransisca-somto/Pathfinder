@@ -14,11 +14,13 @@
   "description": "",
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
+    "@types/multer": "^2.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "morgan": "^1.11.0",
     "mqtt": "^5.15.2",
+    "multer": "^2.2.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

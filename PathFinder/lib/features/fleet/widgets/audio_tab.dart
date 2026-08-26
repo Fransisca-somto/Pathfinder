@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vehicle_model.dart';
 import '../../../shared/widgets/custom_button.dart';
+import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/api_client.dart';
+import 'package:just_audio/just_audio.dart';
 
-class AudioTab extends StatelessWidget {
+class AudioTab extends ConsumerStatefulWidget {
   final VehicleModel vehicle;
   final bool isDark;
 
@@ -14,21 +18,87 @@ class AudioTab extends StatelessWidget {
   });
 
   @override
+  ConsumerState<AudioTab> createState() => _AudioTabState();
+}
+
+class _AudioTabState extends ConsumerState<AudioTab> {
+  final List<Map<String, dynamic>> _audioFiles = [];
+  bool _isLoading = false;
+  final AudioPlayer _player = AudioPlayer();
+  String? _currentlyPlayingUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchAudio();
+    });
+
+    _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        if (mounted) {
+          setState(() {
+            _currentlyPlayingUrl = null;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchAudio() async {
+    setState(() => _isLoading = true);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
+      
+      if (response != null && response is List) {
+        final fetchedAudio = response
+            .where((item) => item['type'] == 'AUDIO')
+            .map((item) => {
+                  'url': item['url'],
+                  'time': DateTime.parse(item['created_at']).toLocal(),
+                })
+            .toList();
+            
+        if (mounted) {
+          setState(() {
+            _audioFiles.clear();
+            _audioFiles.addAll(fetchedAudio);
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load audio')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Generate dummy audio triggers
-    final List<Map<String, dynamic>> dummyAudioEvents = List.generate(
-      8,
-      (index) {
-        final timestamp = DateTime.now().subtract(Duration(hours: index * 5, minutes: index * 12));
-        final timeStr = '${timestamp.day}/${timestamp.month} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
-        return {
-          'id': 'audio_$index',
-          'timestamp': timeStr,
-          'duration': '30s',
-          'trigger': index % 3 == 0 ? 'Manual Request' : 'Sudden Noise Trigger',
-        };
-      },
-    );
+    final isDark = widget.isDark;
+
+    ref.listen(newMediaProvider, (previous, next) {
+      if (next.hasValue && next.value != null) {
+        final data = next.value!;
+        if (data['deviceId'] == widget.vehicle.deviceId && data['type'] == 'AUDIO') {
+          setState(() {
+            _audioFiles.insert(0, {
+              'url': data['mediaUrl'],
+              'time': DateTime.now(),
+            });
+          });
+        }
+      }
+    });
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -92,52 +162,106 @@ class AudioTab extends StatelessWidget {
           const SizedBox(height: 32),
           
           // History List
-          Text(
-            'Recent Audio Events',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent Audio Events',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                ),
+              ),
+              IconButton(
+                icon: _isLoading 
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary))
+                    : Icon(Icons.refresh, color: AppColors.secondary),
+                onPressed: _isLoading ? null : () {
+                  _fetchAudio();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Refreshing audio history...')),
+                  );
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: ListView.separated(
-              itemCount: dummyAudioEvents.length,
+            child: _isLoading && _audioFiles.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : _audioFiles.isEmpty
+              ? Center(child: Text("No audio recorded yet. Tap record to start!", style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)))
+              : ListView.separated(
+              itemCount: _audioFiles.length,
               separatorBuilder: (context, index) => const Divider(),
               itemBuilder: (context, index) {
-                final event = dummyAudioEvents[index];
+                final event = _audioFiles[index];
+                final url = event['url'] as String;
+                final timestamp = event['time'] as DateTime;
+                final timeStr = '${timestamp.day.toString().padLeft(2, '0')}/${timestamp.month.toString().padLeft(2, '0')} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
+
                 return ListTile(
                   leading: CircleAvatar(
                     backgroundColor: AppColors.secondary.withOpacity(0.1),
-                    child: Icon(Icons.play_arrow, color: AppColors.secondary),
+                    child: Icon(Icons.audiotrack, color: AppColors.secondary),
                   ),
                   title: Text(
-                    event['trigger'],
+                    'Remote Recording',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
                     ),
                   ),
                   subtitle: Text(
-                    '${event['timestamp']} • ${event['duration']}',
+                    '$timeStr • Tap to play',
                     style: TextStyle(
                       color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
                     ),
                   ),
                   trailing: IconButton(
-                    icon: Icon(Icons.download, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Downloading audio file...')),
-                      );
+                    icon: Icon(
+                      _currentlyPlayingUrl == url ? Icons.stop : Icons.play_arrow, 
+                      color: AppColors.secondary
+                    ),
+                    onPressed: () async {
+                      try {
+                        if (_currentlyPlayingUrl == url) {
+                          await _player.stop();
+                          setState(() => _currentlyPlayingUrl = null);
+                        } else {
+                          setState(() => _currentlyPlayingUrl = url);
+                          await _player.setUrl(url);
+                          _player.play();
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Failed to play audio')),
+                          );
+                          setState(() => _currentlyPlayingUrl = null);
+                        }
+                      }
                     },
                   ),
-                  onTap: () {
-                    // Would typically open an inline audio player
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Playing audio clip...')),
-                    );
+                  onTap: () async {
+                    try {
+                      if (_currentlyPlayingUrl == url) {
+                        await _player.stop();
+                        setState(() => _currentlyPlayingUrl = null);
+                      } else {
+                        setState(() => _currentlyPlayingUrl = url);
+                        await _player.setUrl(url);
+                        _player.play();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Failed to play audio')),
+                        );
+                        setState(() => _currentlyPlayingUrl = null);
+                      }
+                    }
                   },
                 );
               },

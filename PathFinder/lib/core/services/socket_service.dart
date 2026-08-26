@@ -20,7 +20,7 @@ class SocketService {
 
   void connect({String? userId}) {
     _userId = userId;
-    String apiUrl = 'http://localhost:3000';
+    String apiUrl = 'https://pathfinder-unizk.up.railway.app';
     try {
       if (dotenv.isInitialized) {
         apiUrl = dotenv.env['API_URL'] ?? apiUrl;

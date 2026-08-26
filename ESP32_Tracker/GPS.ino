@@ -6,8 +6,6 @@ HardwareSerial gpsSerial(2); // We will use Hardware Serial port 2
 
 // --- Variables ---
 
-const uint32_t GPS_BAUD = 9600; // Default baud rate for NEO-6M and NEO-8M
-
 // --- Timing ---
 unsigned long lastPublish = 0;
 const unsigned long PUBLISH_INTERVAL = 5000; // Publish every 5 seconds

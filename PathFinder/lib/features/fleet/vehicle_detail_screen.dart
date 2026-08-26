@@ -59,29 +59,6 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
       orElse: () => widget.vehicle
     ) ?? widget.vehicle;
 
-    // Listen for new media uploads from the IoT hardware
-    ref.listen(newMediaProvider, (previous, next) {
-      if (next.hasValue && next.value != null) {
-        final data = next.value!;
-        if (data['vehicleId'] == vehicle.vehicleId) {
-          final type = data['type'] as String?;
-          final mediaUrl = data['mediaUrl'] as String?;
-          
-          if (type == 'IMAGE' && mediaUrl != null) {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('New Image Captured!'),
-                content: Image.network(mediaUrl),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))
-                ],
-              ),
-            );
-          }
-        }
-      }
-    });
 
     return Scaffold(
       appBar: AppBar(
@@ -266,7 +243,8 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                 Builder(
                   builder: (context) {
                     final speed = vehicle.currentSpeed;
-                    final battery = 12.0; // Simulated battery voltage
+                    final batteryVoltage = vehicle.batteryVoltage;
+                    final batteryPct = vehicle.batteryPercentage;
                     final gsm = vehicle.gpsSignalStrength.toDouble();
                     final isEngineCutOff = vehicle.isEngineLocked;
                     final isFuelCutOff = false; // Mock for now
@@ -280,7 +258,7 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                       childAspectRatio: 1.5,
                       children: [
                         _buildMetricCard('Speed', '${speed.toStringAsFixed(1)} km/h', Icons.speed, isDark),
-                        _buildMetricCard('Battery', '${battery.toStringAsFixed(1)}V', Icons.battery_charging_full, isDark),
+                        _buildMetricCard('Battery', '${batteryVoltage.toStringAsFixed(1)}V ($batteryPct%)', Icons.battery_charging_full, isDark),
                         _buildMetricCard('Engine Temp', '${vehicle.engineTemperature.toStringAsFixed(1)}°C', Icons.thermostat, isDark, isWarning: vehicle.engineTemperature > 105.0),
                         _buildMetricCard('Engine', isEngineCutOff ? 'CUT-OFF' : 'RUNNING', Icons.power_settings_new, isDark, isWarning: isEngineCutOff),
                       ],

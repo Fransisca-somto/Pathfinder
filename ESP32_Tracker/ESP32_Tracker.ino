@@ -28,6 +28,9 @@ void loopFingerprint();
 void setupTemperature();
 void loopTemperature();
 
+void setupCameraServer();
+void loopCameraServer();
+
 unsigned long lastMovingTime = 0;
 const unsigned long DEEP_SLEEP_TIMEOUT_MS = 1800000; // 30 minutes
 
@@ -61,6 +64,9 @@ void setup() {
   // 6. Initialize Temperature Sensor
   setupTemperature();
 
+  // 7. Initialize Camera Wi-Fi SoftAP and HTTP Server
+  setupCameraServer();
+
   lastMovingTime = millis();
 }
 
@@ -83,6 +89,9 @@ void loop() {
 
   // 6. Read Temperature
   loopTemperature();
+
+  // 7. Handle incoming Camera file uploads over Wi-Fi
+  loopCameraServer();
 
   // --- Deep Sleep Logic ---
   bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == LOW);

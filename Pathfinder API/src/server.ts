@@ -8,12 +8,15 @@ import authRoutes from './routes/authRoutes';
 import vehicleRoutes from './routes/vehicleRoutes';
 import alertRoutes from './routes/alertRoutes';
 import zoneRoutes from './routes/zoneRoutes';
+import uploadRoutes from './routes/uploadRoutes';
 import { initializeSockets } from './sockets/socketManager';
 import { initializeMqtt } from './services/mqttService';
 
 dotenv.config();
 
 const app = express();
+app.set('etag', false);
+
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -26,6 +29,7 @@ app.use('/auth', authRoutes);
 app.use('/vehicles', vehicleRoutes);
 app.use('/alerts', alertRoutes);
 app.use('/zones', zoneRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Basic health check
 app.get('/health', (req, res) => {

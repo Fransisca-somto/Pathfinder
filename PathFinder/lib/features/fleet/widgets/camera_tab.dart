@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/models/vehicle_model.dart';
+import '../../../core/providers/socket_provider.dart';
+import '../../../core/services/api_client.dart';
 
-class CameraTab extends StatelessWidget {
+class CameraTab extends ConsumerStatefulWidget {
   final VehicleModel vehicle;
   final bool isDark;
 
@@ -13,12 +16,69 @@ class CameraTab extends StatelessWidget {
   });
 
   @override
+  ConsumerState<CameraTab> createState() => _CameraTabState();
+}
+
+class _CameraTabState extends ConsumerState<CameraTab> {
+  final List<Map<String, dynamic>> _images = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchImages();
+    });
+  }
+
+  Future<void> _fetchImages() async {
+    setState(() => _isLoading = true);
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
+      
+      if (response != null && response is List) {
+        final fetchedImages = response
+            .where((item) => item['type'] == 'IMAGE')
+            .map((item) => {
+                  'url': item['url'],
+                  'time': DateTime.parse(item['created_at']).toLocal(),
+                })
+            .toList();
+            
+        if (mounted) {
+          setState(() {
+            _images.clear();
+            _images.addAll(fetchedImages);
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load images')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Generate some mock camera snapshots for UI display
-    final List<String> imageUrls = List.generate(
-      12,
-      (index) => 'https://picsum.photos/seed/${vehicle.vehicleId}_$index/400/300',
-    );
+    final isDark = widget.isDark;
+    
+    ref.listen(newMediaProvider, (previous, next) {
+      if (next.hasValue && next.value != null) {
+        final data = next.value!;
+        if (data['deviceId'] == widget.vehicle.deviceId && data['type'] == 'IMAGE') {
+          setState(() {
+            _images.insert(0, {
+              'url': data['mediaUrl'],
+              'time': DateTime.now(),
+            });
+          });
+        }
+      }
+    });
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -37,10 +97,13 @@ class CameraTab extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.refresh, color: AppColors.secondary),
-                onPressed: () {
+                icon: _isLoading 
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary))
+                    : Icon(Icons.refresh, color: AppColors.secondary),
+                onPressed: _isLoading ? null : () {
+                  _fetchImages();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Requesting new snapshot...')),
+                    const SnackBar(content: Text('Refreshing gallery...')),
                   );
                 },
               ),
@@ -48,27 +111,33 @@ class CameraTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: GridView.builder(
+            child: _isLoading && _images.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : _images.isEmpty 
+              ? Center(child: Text("No photos recorded yet. Trigger the camera!", style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)))
+              : GridView.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 childAspectRatio: 4 / 3,
               ),
-              itemCount: imageUrls.length,
+              itemCount: _images.length,
               itemBuilder: (context, index) {
-                final timestamp = DateTime.now().subtract(Duration(minutes: 15 * index));
-                final timeStr = '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
+                final image = _images[index];
+                final url = image['url'] as String;
+                final timestamp = image['time'] as DateTime;
+                final timeStr = '${timestamp.day.toString().padLeft(2, '0')}/${timestamp.month.toString().padLeft(2, '0')} ${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
 
                 return GestureDetector(
-                  onTap: () => _showFullScreenImage(context, imageUrls[index], timeStr),
+                  onTap: () => _showFullScreenImage(context, url, timeStr),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
                         Image.network(
-                          imageUrls[index],
+                          url,
                           fit: BoxFit.cover,
                           loadingBuilder: (context, child, loadingProgress) {
                             if (loadingProgress == null) return child;

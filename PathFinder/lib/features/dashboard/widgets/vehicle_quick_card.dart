@@ -128,7 +128,7 @@ class VehicleQuickCard extends ConsumerWidget {
               _TelemetryItem(
                 icon: Icons.battery_charging_full,
                 label: 'Battery',
-                value: '100%',
+                value: '${vehicle.batteryVoltage.toStringAsFixed(1)}V (${vehicle.batteryPercentage}%)',
                 isDark: isDark,
               ),
               _TelemetryItem(

@@ -20,6 +20,7 @@ class VehicleModel {
   final String connectionMode;
   final int gpsSignalStrength;
   final double engineTemperature;
+  final double batteryVoltage;
 
   const VehicleModel({
     required this.vehicleId,
@@ -41,7 +42,14 @@ class VehicleModel {
     this.connectionMode = 'GPRS',
     this.gpsSignalStrength = 4,
     this.engineTemperature = 0.0,
+    this.batteryVoltage = 12.0,
   });
+
+  int get batteryPercentage {
+    if (batteryVoltage >= 12.6) return 100;
+    if (batteryVoltage <= 11.9) return 0;
+    return ((batteryVoltage - 11.9) / (12.6 - 11.9) * 100).round();
+  }
 
   VehicleModel copyWith({
     String? vehicleId,
@@ -63,6 +71,7 @@ class VehicleModel {
     String? connectionMode,
     int? gpsSignalStrength,
     double? engineTemperature,
+    double? batteryVoltage,
   }) {
     return VehicleModel(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -84,6 +93,7 @@ class VehicleModel {
       connectionMode: connectionMode ?? this.connectionMode,
       gpsSignalStrength: gpsSignalStrength ?? this.gpsSignalStrength,
       engineTemperature: engineTemperature ?? this.engineTemperature,
+      batteryVoltage: batteryVoltage ?? this.batteryVoltage,
     );
   }
 
@@ -120,6 +130,7 @@ class VehicleModel {
       connectionMode: json['connectionMode'] ?? 'GPRS',
       gpsSignalStrength: json['gpsSignalStrength'] ?? 4,
       engineTemperature: (json['engine_temperature'] ?? 0.0).toDouble(),
+      batteryVoltage: (json['battery_voltage'] ?? 12.0).toDouble(),
     );
   }
 }

@@ -1,9 +1,13 @@
 #include "Hardware.h"
+#include <esp_mac.h>
 
 #define TINY_GSM_MODEM_SIM7600
 #include <TinyGsmClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <SD.h>
+
+extern String pendingFileUpload;
 
 // --- APN Configuration ---
 const char apn[]      = "YOUR_APN";
@@ -170,9 +174,24 @@ void loopNetwork() {
     reconnectMQTT();
   }
   mqttClient.loop();
+
+  // Check if there's a file waiting to be uploaded from the SD card
+  extern void processPendingUploads();
+  processPendingUploads();
 }
 
 extern float getVehicleTemperature();
+
+float getCarBatteryVoltage() {
+  int rawADC = analogRead(BATTERY_PIN);
+  float voltageAtPin = (rawADC / 4095.0) * 3.3; // ESP32 ADC max is 3.3V
+  
+  // Assuming a standard Voltage Divider (e.g. 100k and 20k resistors)
+  // V_batt = V_pin * ((R1 + R2) / R2) 
+  // For R1=100k, R2=20k -> Ratio = 6.0
+  float ratio = 6.0; 
+  return voltageAtPin * ratio;
+}
 
 void publishTelemetry(float lat, float lng, float speed, int satellites) {
   if (!mqttClient.connected()) return;
@@ -185,6 +204,7 @@ void publishTelemetry(float lat, float lng, float speed, int satellites) {
   doc["satellites"] = satellites;
   doc["status"] = (speed > 5) ? "moving" : "parked";
   doc["temperature"] = getVehicleTemperature();
+  doc["battery_voltage"] = getCarBatteryVoltage();
 
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer);
@@ -210,4 +230,90 @@ void publishAlert(String type, String message) {
   Serial.println(jsonBuffer);
   
   mqttClient.publish("pathfinder/alerts", jsonBuffer);
+}
+
+void processPendingUploads() {
+  if (pendingFileUpload == "") return;
+  
+  if (!modem.isGprsConnected()) {
+    Serial.println("[Network] Cannot upload, GPRS disconnected.");
+    return;
+  }
+
+  String filePath = pendingFileUpload;
+  pendingFileUpload = ""; // Clear flag
+
+  Serial.print("[Network] Uploading file to server: ");
+  Serial.println(filePath);
+
+  File file = SD.open(filePath, FILE_READ);
+  if (!file) {
+    Serial.println("[Network] Failed to open file for reading!");
+    return;
+  }
+
+  String server = "pathfinder-unizk.up.railway.app";
+  int port = 80;
+
+  Serial.print("[Network] Connecting to ");
+  Serial.println(server);
+
+  if (!gsmClient.connect(server.c_str(), port)) {
+    Serial.println("[Network] Connection failed! Will try again later.");
+    pendingFileUpload = filePath; // Restore flag to retry
+    file.close();
+    return;
+  }
+
+  // Construct HTTP POST multipart/form-data payload
+  String boundary = "----PathfinderBoundary123456";
+  String contentType = filePath.endsWith(".wav") ? "audio/wav" : "image/jpeg";
+  
+  String head = "--" + boundary + "\r\n";
+  head += "Content-Disposition: form-data; name=\"file\"; filename=\"" + filePath.substring(1) + "\"\r\n";
+  head += "Content-Type: " + contentType + "\r\n\r\n";
+  
+  String tail = "\r\n--" + boundary + "--\r\n";
+  
+  uint32_t contentLength = head.length() + file.size() + tail.length();
+
+  Serial.println("[Network] Sending HTTP POST request...");
+  
+  gsmClient.print(String("POST /api/upload HTTP/1.1\r\n"));
+  gsmClient.print(String("Host: ") + server + "\r\n");
+  gsmClient.print(String("Content-Length: ") + String(contentLength) + "\r\n");
+  gsmClient.print(String("Content-Type: multipart/form-data; boundary=") + boundary + "\r\n");
+  gsmClient.print(String("X-Device-ID: ") + deviceId + "\r\n"); // Identifying the tracker
+  gsmClient.print("\r\n");
+  
+  // Send body header
+  gsmClient.print(head);
+
+  // Send file chunks
+  const int chunk_size = 512;
+  uint8_t buffer[chunk_size];
+  while (file.available()) {
+    int bytesRead = file.read(buffer, chunk_size);
+    gsmClient.write(buffer, bytesRead);
+  }
+  file.close();
+  
+  // Send body tail
+  gsmClient.print(tail);
+
+  Serial.println("[Network] Upload complete, waiting for response...");
+  
+  unsigned long timeout = millis();
+  while (gsmClient.connected() && millis() - timeout < 10000) {
+    while (gsmClient.available()) {
+      char c = gsmClient.read();
+      Serial.print(c);
+      timeout = millis();
+    }
+  }
+  Serial.println("\n[Network] --- Upload Finished ---");
+  gsmClient.stop();
+  
+  // Clean up the file so we don't fill the SD card
+  SD.remove(filePath);
 }
