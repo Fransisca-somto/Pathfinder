@@ -13,9 +13,10 @@
 //    SoftwareSerial (GPIO 32, 33): ZW111 Fingerprint Sensor
 // ==========================================================
 
-// --- GPS Module (NEO-6M) --- Hardware Serial2
-const int GPS_RX_PIN = 4;
-const int GPS_TX_PIN = 13;
+// --- GPS Module (NEO-6M) ---
+// Not used in Combined GSM/GPS Tracker
+// const int GPS_RX_PIN = 4;
+// const int GPS_TX_PIN = 13;
 const int GPS_BAUD   = 9600;
 
 // --- A7670E Modem (LTE) --- Hardware Serial1

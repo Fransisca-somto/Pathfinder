@@ -55,16 +55,22 @@ class _AudioTabState extends ConsumerState<AudioTab> {
     setState(() => _isLoading = true);
     try {
       final apiClient = ref.read(apiClientProvider);
+      print('[AudioTab] Fetching audio for device: ${widget.vehicle.deviceId}');
       final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
+      print('[AudioTab] Response: $response');
       
       if (response != null && response is List) {
         final fetchedAudio = response
             .where((item) => item['type'] == 'AUDIO')
-            .map((item) => {
-                  'url': item['url'],
-                  'time': DateTime.parse(item['created_at']).toLocal(),
-                })
+            .map<Map<String, dynamic>>((item) {
+              return {
+                'url': item['url'],
+                'time': DateTime.parse(item['created_at']).toLocal(),
+              };
+            })
             .toList();
+        
+        print('[AudioTab] Found ${fetchedAudio.length} audio files');
             
         if (mounted) {
           setState(() {
@@ -74,6 +80,7 @@ class _AudioTabState extends ConsumerState<AudioTab> {
         }
       }
     } catch (e) {
+      print('[AudioTab] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load audio')));
       }

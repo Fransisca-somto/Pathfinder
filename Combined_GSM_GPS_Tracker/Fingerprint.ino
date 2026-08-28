@@ -44,8 +44,8 @@ int failedAttempts = 0;
 // External function from Network.ino to send alerts to the backend
 extern void publishAlert(String type, String message);
 
-// External GPS object from ESP32_Tracker.ino for speed-based safety checks
-extern TinyGPSPlus gps;
+// External global variable for vehicle speed (used for safety checks)
+extern float currentVehicleSpeed;
 
 
 // =========================
@@ -138,9 +138,9 @@ void triggerDeleteFingerprint(int id) {
 void setAuthBypass(bool state) {
   if (!state) {
     // Trying to LOCK the engine remotely
-    if (gps.speed.isValid() && gps.speed.kmph() >= 20.0) {
+    if (currentVehicleSpeed >= 20.0) {
       Serial.println("SAFETY: Cannot lock engine at >= 20 km/h!");
-      publishAlert("system", "Remote lock rejected. Vehicle speed > 20km/h.");
+      publishAlert("system", "Remote lock rejected. Vehicle speed >= 20km/h.");
       return;
     }
   }

@@ -1,11 +1,10 @@
 #include "Hardware.h"
-#include <TinyGPSPlus.h>
 #include <esp_sleep.h>
 #include <PubSubClient.h>
 
 // --- Global Objects shared across tabs ---
 String deviceId;
-TinyGPSPlus gps;
+float currentVehicleSpeed = 0.0;
 extern PubSubClient mqttClient;
 
 // --- Function Declarations from other tabs ---
@@ -97,7 +96,7 @@ void loop() {
 
   // --- Deep Sleep Logic ---
   bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == LOW);
-  bool isMoving = (gps.speed.isValid() && gps.speed.kmph() > 5.0);
+  bool isMoving = (currentVehicleSpeed > 5.0);
 
   if (isMoving || !isAccOff) {
     lastMovingTime = millis(); // Reset sleep timer

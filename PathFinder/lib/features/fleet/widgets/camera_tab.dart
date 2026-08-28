@@ -35,16 +35,22 @@ class _CameraTabState extends ConsumerState<CameraTab> {
     setState(() => _isLoading = true);
     try {
       final apiClient = ref.read(apiClientProvider);
+      print('[CameraTab] Fetching images for device: ${widget.vehicle.deviceId}');
       final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
+      print('[CameraTab] Response: $response');
       
       if (response != null && response is List) {
         final fetchedImages = response
             .where((item) => item['type'] == 'IMAGE')
-            .map((item) => {
-                  'url': item['url'],
-                  'time': DateTime.parse(item['created_at']).toLocal(),
-                })
+            .map<Map<String, dynamic>>((item) {
+              return {
+                'url': item['url'],
+                'time': DateTime.parse(item['created_at']).toLocal(),
+              };
+            })
             .toList();
+        
+        print('[CameraTab] Found ${fetchedImages.length} images');
             
         if (mounted) {
           setState(() {
@@ -54,6 +60,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
         }
       }
     } catch (e) {
+      print('[CameraTab] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load images')));
       }

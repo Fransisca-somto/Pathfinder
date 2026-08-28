@@ -175,7 +175,7 @@ void loop() {
 // =========================================================
 void printMenu() {
   Serial.println("=== SELECT A COMPONENT TO TEST ===");
-  Serial.println("  1.  GPS Module (NEO-6M)");
+  Serial.println("  1.  Cellular GPS (GNSS)");
   Serial.println("  2.  Fingerprint Sensor (ZW111)");
   Serial.println("  3.  Cellular Modem (A7670E)");
   Serial.println("  4.  Accelerometer (MPU6050)");
@@ -196,49 +196,51 @@ void printMenu() {
 //  TEST 1: GPS MODULE
 // =========================================================
 void testGPS() {
-  Serial.println("[TEST] GPS Module (NEO-6M) on Serial2");
+  Serial.println("[TEST] Cellular GPS (GNSS) on Serial1");
   Serial.println("Listening for 15 seconds...");
   Serial.println("(Place antenna near a window for satellite fix)");
 
-  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
-  delay(100);
+  modemSerial.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  delay(1000);
+
+  // Turn on Active Antenna power
+  modemSerial.println("AT+CVAUX=1");
+  delay(500);
+  while(modemSerial.available()) modemSerial.read(); // Clear buffer
+  
+  // Power on GPS Engine
+  modemSerial.println("AT+CGPS=1,1");
+  delay(500);
+  while(modemSerial.available()) modemSerial.read();
 
   unsigned long start = millis();
-  int charsReceived = 0;
-
+  
   while (millis() - start < 15000) {
-    while (gpsSerial.available()) {
-      char c = gpsSerial.read();
-      gps.encode(c);
-      charsReceived++;
+    modemSerial.println("AT+CGPSINFO");
+    unsigned long cmdStart = millis();
+    String response = "";
+    
+    // Read the response for 1 second
+    while (millis() - cmdStart < 1000) {
+      while (modemSerial.available()) {
+        response += (char)modemSerial.read();
+      }
+    }
+    
+    // Only print if it contains +CGPSINFO
+    if (response.indexOf("+CGPSINFO") >= 0) {
+      Serial.print("  Raw Data: ");
+      // Clean up the output string to be one line
+      response.replace("\r", "");
+      response.replace("\n", " ");
+      Serial.println(response);
     }
   }
 
-  Serial.print("  Characters received: ");
-  Serial.println(charsReceived);
-
-  if (charsReceived < 10) {
-    Serial.println("  RESULT: FAIL — No data from GPS.");
-    Serial.println("  Check: RX/TX wiring may be swapped.");
-  } else {
-    Serial.println("  RESULT: PASS — GPS is communicating.");
-
-    if (gps.location.isValid()) {
-      Serial.print("  Latitude:   ");
-      Serial.println(gps.location.lat(), 6);
-      Serial.print("  Longitude:  ");
-      Serial.println(gps.location.lng(), 6);
-    } else {
-      Serial.println("  Location:   Not yet fixed (needs clear sky).");
-    }
-
-    if (gps.satellites.isValid()) {
-      Serial.print("  Satellites: ");
-      Serial.println(gps.satellites.value());
-    }
-  }
-
-  gpsSerial.end();
+  Serial.println("  RESULT: Test complete.");
+  Serial.println("  (If it says ',,,,,,,,' the antenna sees NO satellites.)");
+  
+  // We leave the GPS on or we could turn it off. Let's just leave it.
 }
 
 // =========================================================

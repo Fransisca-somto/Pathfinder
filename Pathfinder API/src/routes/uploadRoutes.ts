@@ -100,7 +100,16 @@ router.get('/:deviceId', async (req: Request, res: Response): Promise<any> => {
   try {
     const deviceId = req.params.deviceId as string;
     
-    const { data, error } = await supabase.storage
+    const { createClient } = require('@supabase/supabase-js');
+    const adminSupabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
+    );
+
+    console.log(`[Upload API] Listing files for device: ${deviceId}`);
+
+    const { data, error } = await adminSupabase.storage
       .from('media')
       .list(deviceId, {
         limit: 100,
@@ -113,14 +122,16 @@ router.get('/:deviceId', async (req: Request, res: Response): Promise<any> => {
       return res.status(500).json({ error: 'Failed to fetch media' });
     }
 
+    console.log(`[Upload API] Raw files found: ${data?.length || 0}`);
+
     if (!data || data.length === 0) {
       return res.status(200).json([]);
     }
 
-    const filteredData = data.filter(file => file.name !== '.emptyFolderPlaceholder');
+    const filteredData = data.filter((file: any) => file.name !== '.emptyFolderPlaceholder');
 
-    const mediaFiles = filteredData.map((file) => {
-      const publicUrl = supabase.storage.from('media').getPublicUrl(`${deviceId}/${file.name}`).data.publicUrl;
+    const mediaFiles = filteredData.map((file: any) => {
+      const publicUrl = adminSupabase.storage.from('media').getPublicUrl(`${deviceId}/${file.name}`).data.publicUrl;
       const isImage = file.name.endsWith('.jpg') || file.name.endsWith('.png') || file.name.endsWith('.jpeg');
       return {
         url: publicUrl,
@@ -129,6 +140,7 @@ router.get('/:deviceId', async (req: Request, res: Response): Promise<any> => {
       };
     });
 
+    console.log(`[Upload API] Returning ${mediaFiles.length} media files`);
     return res.status(200).json(mediaFiles);
   } catch (err) {
     console.error('[Upload API] Unexpected error in GET:', err);

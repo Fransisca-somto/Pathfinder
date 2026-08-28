@@ -1,6 +1,6 @@
-#include <WiFi.h>
-#include <WebServer.h>
 #include <SD.h>
+#include <WebServer.h>
+#include <WiFi.h>
 
 WebServer cameraServer(80);
 
@@ -8,12 +8,13 @@ WebServer cameraServer(80);
 String pendingFileUpload = "";
 
 void handleUpload() {
-  HTTPUpload& upload = cameraServer.upload();
+  HTTPUpload &upload = cameraServer.upload();
   static File uploadFile;
 
   if (upload.status == UPLOAD_FILE_START) {
     String filename = upload.filename;
-    if (!filename.startsWith("/")) filename = "/" + filename;
+    if (!filename.startsWith("/"))
+      filename = "/" + filename;
     Serial.print("[Camera Server] Receiving file: ");
     Serial.println(filename);
 
@@ -22,7 +23,8 @@ void handleUpload() {
     }
     uploadFile = SD.open(filename, FILE_WRITE);
     if (!uploadFile) {
-      Serial.println("[Camera Server] Failed to open file for writing on SD card.");
+      Serial.println(
+          "[Camera Server] Failed to open file for writing on SD card.");
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     if (uploadFile) {
@@ -34,13 +36,14 @@ void handleUpload() {
       Serial.print("[Camera Server] File saved successfully. Size: ");
       Serial.print(upload.totalSize);
       Serial.println(" bytes.");
-      
+
       // Send response to the ESP32-S3 camera that upload succeeded
       cameraServer.send(200, "text/plain", "Upload success");
-      
+
       // Store the filename to trigger a cellular upload later (Phase 3)
       String fname = upload.filename;
-      if (!fname.startsWith("/")) fname = "/" + fname;
+      if (!fname.startsWith("/"))
+        fname = "/" + fname;
       pendingFileUpload = fname;
     } else {
       cameraServer.send(500, "text/plain", "Failed to save file");
@@ -50,25 +53,27 @@ void handleUpload() {
 
 void setupCameraServer() {
   Serial.println("[Camera Server] Starting Wi-Fi SoftAP...");
-  
+
   // Set up the Wi-Fi Access Point
   // SSID: Pathfinder_Internal, Password: SecurePass123
   WiFi.softAP("Pathfinder_Internal", "SecurePass123");
-  
+
   IPAddress IP = WiFi.softAPIP();
   Serial.print("[Camera Server] AP IP address: ");
   Serial.println(IP);
 
   // Setup the HTTP POST endpoint for file uploads
-  cameraServer.on("/upload", HTTP_POST, []() {
-    // This empty handler is called after handleUpload is finished if handleUpload didn't already send a response
-    cameraServer.send(200, "text/plain", "OK");
-  }, handleUpload);
+  cameraServer.on(
+      "/upload", HTTP_POST,
+      []() {
+        // This empty handler is called after handleUpload is finished if
+        // handleUpload didn't already send a response
+        cameraServer.send(200, "text/plain", "OK");
+      },
+      handleUpload);
 
   cameraServer.begin();
   Serial.println("[Camera Server] HTTP Server started listening on /upload");
 }
 
-void loopCameraServer() {
-  cameraServer.handleClient();
-}
+void loopCameraServer() { cameraServer.handleClient(); }

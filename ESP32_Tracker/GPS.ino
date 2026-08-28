@@ -19,7 +19,7 @@ void setupGPS() {
   // Begin Serial2 with our custom pins
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   
-  Serial.println("GPS Module initialized on Pins 4 (RX) and 5 (TX).");
+  Serial.println("GPS Module initialized on Pins 4 (RX) and 13 (TX).");
 }
 
 void loopGPS() {

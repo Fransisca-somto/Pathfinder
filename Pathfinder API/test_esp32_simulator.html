@@ -47,8 +47,8 @@
             status.innerHTML = "<span style='color:blue;'>Uploading to Railway API... Please wait.</span>";
 
             try {
-                // Changed to localhost since the Railway server doesn't have the new code yet!
-                const response = await fetch('http://localhost:3000/api/upload', {
+                // Using the deployed Railway server
+                const response = await fetch('https://pathfinder-unizk.up.railway.app/api/upload', {
                     method: 'POST',
                     headers: {
                         'X-Device-ID': deviceId
