@@ -52,34 +52,7 @@ class _AudioTabState extends ConsumerState<AudioTab> {
   }
 
   Future<void> _fetchAudio() async {
-    setState(() => _isLoading = true);
-    try {
-      final apiClient = ref.read(apiClientProvider);
-      final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
-      
-      if (response != null && response is List) {
-        final fetchedAudio = response
-            .where((item) => item['type'] == 'AUDIO')
-            .map((item) => {
-                  'url': item['url'],
-                  'time': DateTime.parse(item['created_at']).toLocal(),
-                })
-            .toList();
-            
-        if (mounted) {
-          setState(() {
-            _audioFiles.clear();
-            _audioFiles.addAll(fetchedAudio);
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load audio')));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    // Feature deactivated
   }
 
   @override
@@ -178,9 +151,8 @@ class _AudioTabState extends ConsumerState<AudioTab> {
                     ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary))
                     : Icon(Icons.refresh, color: AppColors.secondary),
                 onPressed: _isLoading ? null : () {
-                  _fetchAudio();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Refreshing audio history...')),
+                    const SnackBar(content: Text('This feature is deactivated for now')),
                   );
                 },
               ),

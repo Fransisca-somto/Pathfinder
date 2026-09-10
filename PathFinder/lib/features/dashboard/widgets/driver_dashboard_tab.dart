@@ -22,6 +22,15 @@ class DriverDashboardTab extends ConsumerWidget {
         // Find assigned vehicle (dummy logic: just grab the first one for the mock)
         final assignedVehicle = vehicles.isNotEmpty ? vehicles.first : null;
 
+        // Dynamic greeting
+        final hour = DateTime.now().hour;
+        String greeting = 'Good Evening,';
+        if (hour < 12) {
+          greeting = 'Good Morning,';
+        } else if (hour < 17) {
+          greeting = 'Good Afternoon,';
+        }
+
         return SafeArea(
           child: CustomScrollView(
             slivers: [
@@ -39,7 +48,7 @@ class DriverDashboardTab extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Driver Dashboard',
+                                greeting,
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,

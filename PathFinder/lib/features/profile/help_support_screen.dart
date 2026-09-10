@@ -134,6 +134,16 @@ class HelpSupportScreen extends StatelessWidget {
                   TextButton.icon(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Calling +234 800 123 4567...')),
+                      );
+                    },
+                    icon: const Icon(Icons.phone),
+                    label: const Text('Call +234 800 123 4567'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Opening Email Client...')),
                       );
                     },

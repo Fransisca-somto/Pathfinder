@@ -32,34 +32,7 @@ class _CameraTabState extends ConsumerState<CameraTab> {
   }
 
   Future<void> _fetchImages() async {
-    setState(() => _isLoading = true);
-    try {
-      final apiClient = ref.read(apiClientProvider);
-      final response = await apiClient.get('/api/upload/${widget.vehicle.deviceId}');
-      
-      if (response != null && response is List) {
-        final fetchedImages = response
-            .where((item) => item['type'] == 'IMAGE')
-            .map((item) => {
-                  'url': item['url'],
-                  'time': DateTime.parse(item['created_at']).toLocal(),
-                })
-            .toList();
-            
-        if (mounted) {
-          setState(() {
-            _images.clear();
-            _images.addAll(fetchedImages);
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load images')));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    // Feature deactivated
   }
 
   @override
@@ -101,9 +74,8 @@ class _CameraTabState extends ConsumerState<CameraTab> {
                     ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary))
                     : Icon(Icons.refresh, color: AppColors.secondary),
                 onPressed: _isLoading ? null : () {
-                  _fetchImages();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Refreshing gallery...')),
+                    const SnackBar(content: Text('This feature is deactivated for now')),
                   );
                 },
               ),

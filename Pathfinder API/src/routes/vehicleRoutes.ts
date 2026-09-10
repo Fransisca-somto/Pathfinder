@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { registerVehicle, getVehicles, getVehicleById, deleteVehicle, updateVehicle, assignDriver, getFingerprints, addFingerprint, deleteFingerprint, setAuthBypass, toggleFingerprintStatus, getTrips } from '../controllers/vehicleController';
+import { registerVehicle, getVehicles, getVehicleById, deleteVehicle, updateVehicle, assignDriver, getFingerprints, addFingerprint, deleteFingerprint, setAuthBypass, toggleFingerprintStatus, getTrips, soundAlarm } from '../controllers/vehicleController';
 import { authenticateUser } from '../middlewares/authMiddleware';
 
 const router = Router();
@@ -18,6 +18,7 @@ router.post('/:id/fingerprints', authenticateUser, addFingerprint);
 router.delete('/:id/fingerprints/:slotId', authenticateUser, deleteFingerprint);
 router.post('/:id/fingerprints/:slotId/toggle', authenticateUser, toggleFingerprintStatus);
 router.post('/:id/auth-bypass', authenticateUser, setAuthBypass);
+router.post('/:id/alarm', authenticateUser, soundAlarm);
 
 router.delete('/:id', authenticateUser, deleteVehicle);
 

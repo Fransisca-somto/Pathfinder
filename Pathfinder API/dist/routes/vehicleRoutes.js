@@ -17,6 +17,7 @@ router.post('/:id/fingerprints', authMiddleware_1.authenticateUser, vehicleContr
 router.delete('/:id/fingerprints/:slotId', authMiddleware_1.authenticateUser, vehicleController_1.deleteFingerprint);
 router.post('/:id/fingerprints/:slotId/toggle', authMiddleware_1.authenticateUser, vehicleController_1.toggleFingerprintStatus);
 router.post('/:id/auth-bypass', authMiddleware_1.authenticateUser, vehicleController_1.setAuthBypass);
+router.post('/:id/alarm', authMiddleware_1.authenticateUser, vehicleController_1.soundAlarm);
 router.delete('/:id', authMiddleware_1.authenticateUser, vehicleController_1.deleteVehicle);
 exports.default = router;
 //# sourceMappingURL=vehicleRoutes.js.map

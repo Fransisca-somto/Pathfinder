@@ -86,7 +86,7 @@ exports.refreshZoneCache = refreshZoneCache;
 // Call this on backend startup
 (0, exports.refreshZoneCache)();
 // --- Processing Logic ---
-const processVehicleLocation = async (vehicleId, deviceId, lat, lng, ownerId) => {
+const processVehicleLocation = async (vehicleId, deviceId, lat, lng, acc, ownerId) => {
     if (!vehicleZoneState.has(vehicleId)) {
         vehicleZoneState.set(vehicleId, new Map());
     }
@@ -101,41 +101,32 @@ const processVehicleLocation = async (vehicleId, deviceId, lat, lng, ownerId) =>
             // Transition: OUTSIDE -> INSIDE
             stateMap.set(zoneId, 'inside');
             console.log(`[ZoneService] Vehicle ${deviceId} ENTERED zone ${zone.name}`);
-            if (zone.type === 'restricted') {
-                // Automatically lock engine!
-                console.log(`[ZoneService] Restricted zone entered. LOCKING ENGINE for ${deviceId}!`);
-                await supabase_1.supabase.from('vehicles').update({ is_engine_locked: true }).eq('id', vehicleId);
-                (0, mqttService_1.publishCommand)(deviceId, 'LOCK_ENGINE');
-                (0, mqttService_1.triggerAlert)({
-                    deviceId,
-                    type: 'zoneEnter',
-                    message: `UNSAFE ZONE ENTRY: Vehicle entered '${zone.name}'. ENGINE DISABLED automatically.`
-                });
-            }
-            else {
-                (0, mqttService_1.triggerAlert)({
-                    deviceId,
-                    type: 'zoneEnter',
-                    message: `Vehicle entered zone: ${zone.name}`
-                });
-            }
+            (0, mqttService_1.triggerAlert)({
+                deviceId,
+                type: 'zoneEnter',
+                message: `Vehicle returned to safe zone: ${zone.name}`
+            });
         }
         else if (!isInsideNow && wasInsideBefore) {
             // Transition: INSIDE -> OUTSIDE
             stateMap.set(zoneId, 'outside');
             console.log(`[ZoneService] Vehicle ${deviceId} EXITED zone ${zone.name}`);
-            if (zone.type === 'safe') {
+            // Lock engine immediately!
+            await supabase_1.supabase.from('vehicles').update({ is_engine_locked: true }).eq('id', vehicleId);
+            (0, mqttService_1.publishCommand)(deviceId, 'setAuthBypass', { state: false }); // Ensure ESP32 locks it
+            if (acc === false) {
+                // Towed (Moving but ACC is off)
                 (0, mqttService_1.triggerAlert)({
                     deviceId,
-                    type: 'zoneExit',
-                    message: `WARNING: Vehicle exited safe zone: ${zone.name}`
+                    type: 'danger',
+                    message: `SILENT ALERT: Vehicle is exiting safe zone '${zone.name}' while engine is OFF (Possible Towing).`
                 });
             }
             else {
                 (0, mqttService_1.triggerAlert)({
                     deviceId,
-                    type: 'zoneExit',
-                    message: `Vehicle exited zone: ${zone.name}`
+                    type: 'danger',
+                    message: `DANGER: Vehicle exited safe zone '${zone.name}'. Engine Locked. ONLY Owner can unlock.`
                 });
             }
         }

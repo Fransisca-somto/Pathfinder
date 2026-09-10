@@ -128,6 +128,8 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
       final lng = (data['lng'] as num?)?.toDouble();
       final speed = (data['speed'] as num?)?.toDouble();
       final temp = (data['temperature'] as num?)?.toDouble();
+      final acc = data['acc'] as bool?;
+      final batteryPct = data['battery'] as int?;
       final statusStr = data['status'] as String?;
       
       VehicleStatus? parsedStatus;
@@ -146,6 +148,8 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
             currentSpeed: speed ?? v.currentSpeed,
             engineTemperature: temp ?? v.engineTemperature,
             currentStatus: parsedStatus ?? v.currentStatus,
+            engineRunning: acc ?? v.engineRunning,
+            batteryPercentage: batteryPct ?? v.batteryPercentage,
           ) else v
       ]);
     }

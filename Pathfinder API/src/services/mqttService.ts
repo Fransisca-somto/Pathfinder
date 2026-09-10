@@ -1,7 +1,7 @@
 import mqtt from 'mqtt';
 import { supabase } from '../config/supabase';
 import { emitLiveTelemetry, emitNewAlert } from '../sockets/socketManager';
-import { startTrip, endTrip } from './tripService';
+import { startTrip, endTrip, appendTripCoordinate } from './tripService';
 import { processVehicleLocation } from './zoneService';
 
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
@@ -203,12 +203,14 @@ const handleTelemetry = async (data: any) => {
       await startTrip(vehicleId, data.lat, data.lng);
     } else if (prevStatus === 'moving' && (finalStatus === 'parked' || finalStatus === 'offline')) {
       await endTrip(vehicleId, data.lat, data.lng);
+    } else if (finalStatus === 'moving') {
+      appendTripCoordinate(vehicleId, data.lat, data.lng);
     }
     
     deviceStatusCache.set(deviceId, finalStatus);
 
     // Evaluate against assigned zones
-    await processVehicleLocation(vehicleId, deviceId, data.lat, data.lng, ownerId);
+    await processVehicleLocation(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
   }
   // ---------------------------
 
@@ -218,6 +220,8 @@ const handleTelemetry = async (data: any) => {
     lat: data.lat,
     lng: data.lng,
     speed: data.speed,
+    acc: data.acc,
+    battery: data.battery,
     temperature: data.temperature,
     status: finalStatus,
     timestamp: new Date().toISOString(),

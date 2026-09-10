@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/services/api_client.dart';
 import '../../shared/widgets/custom_button.dart';
+import '../../shared/widgets/custom_button.dart';
 import '../../shared/widgets/custom_textfield.dart';
+import '../../shared/widgets/qr_scanner_screen.dart';
 
 class AddVehicleScreen extends ConsumerStatefulWidget {
   const AddVehicleScreen({super.key});
@@ -67,15 +71,34 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
   }
 
   void _scanQRCode() async {
-    // On web or when mobile_scanner is not available, show a dialog for manual entry
+    // On web show a dialog for manual entry
     if (kIsWeb) {
       _showManualEntryDialog();
       return;
     }
 
-    // Try to use mobile_scanner if available on mobile
-    // For now, fall back to manual entry dialog
-    _showManualEntryDialog();
+    final status = await Permission.camera.request();
+    if (status.isDenied || status.isPermanentlyDenied) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera permission is required to scan QR codes.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    final result = await Navigator.push<String?>(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        _deviceIdController.text = result;
+      });
+    }
   }
 
   void _showManualEntryDialog() {
@@ -328,3 +351,6 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
     );
   }
 }
+
+
+

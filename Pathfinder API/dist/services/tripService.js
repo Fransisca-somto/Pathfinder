@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.endTrip = exports.startTrip = void 0;
+exports.endTrip = exports.appendTripCoordinate = exports.startTrip = void 0;
 const supabase_1 = require("../config/supabase");
 // Helper: Haversine distance in kilometers
 const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -15,6 +15,8 @@ const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 };
+// Memory Cache for active trip coordinates to draw Polyline later
+const activeTripCoordinates = new Map();
 // Helper: Reverse Geocoding with Nominatim OSM
 const getAddressFromCoords = async (lat, lng) => {
     try {
@@ -58,12 +60,28 @@ const startTrip = async (vehicleId, lat, lng) => {
         if (error) {
             console.error('[TripService] Failed to insert new trip:', error);
         }
+        else {
+            activeTripCoordinates.set(vehicleId, [[lat, lng]]);
+        }
     }
     catch (err) {
         console.error('[TripService] startTrip error:', err);
     }
 };
 exports.startTrip = startTrip;
+const appendTripCoordinate = (vehicleId, lat, lng) => {
+    if (activeTripCoordinates.has(vehicleId)) {
+        const path = activeTripCoordinates.get(vehicleId);
+        if (path.length > 0) {
+            const lastCoords = path[path.length - 1];
+            // Only append if location changed slightly to save memory
+            if (!lastCoords || lastCoords[0] !== lat || lastCoords[1] !== lng) {
+                path.push([lat, lng]);
+            }
+        }
+    }
+};
+exports.appendTripCoordinate = appendTripCoordinate;
 const endTrip = async (vehicleId, lat, lng) => {
     try {
         // 1. Find the latest open trip for this vehicle
@@ -88,6 +106,12 @@ const endTrip = async (vehicleId, lat, lng) => {
         const distanceKm = calculateDistanceKm(openTrip.start_lat, openTrip.start_lng, lat, lng);
         // 4. Reverse Geocode End Location
         const endAddress = await getAddressFromCoords(lat, lng);
+        // Get cached polyline path
+        const routePath = activeTripCoordinates.get(vehicleId) || [];
+        const lastPoint = routePath[routePath.length - 1];
+        if (routePath.length === 0 || !lastPoint || lastPoint[0] !== lat) {
+            routePath.push([lat, lng]);
+        }
         // 5. Update the trip
         const { error: updateError } = await supabase_1.supabase
             .from('trips')
@@ -97,14 +121,16 @@ const endTrip = async (vehicleId, lat, lng) => {
             end_lng: lng,
             end_address: endAddress,
             distance_km: parseFloat(distanceKm.toFixed(2)),
-            duration_mins: durationMins
+            duration_mins: durationMins,
+            route_path: routePath
         })
             .eq('id', openTrip.id);
         if (updateError) {
             console.error('[TripService] Failed to update ended trip:', updateError);
         }
         else {
-            console.log(`[TripService] Trip ${openTrip.id} ended successfully.`);
+            console.log(`[TripService] Trip ${openTrip.id} ended successfully. Saved ${routePath.length} coordinates.`);
+            activeTripCoordinates.delete(vehicleId);
         }
     }
     catch (err) {

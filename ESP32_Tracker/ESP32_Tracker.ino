@@ -28,8 +28,7 @@ void loopFingerprint();
 void setupTemperature();
 void loopTemperature();
 
-void setupCameraServer();
-void loopCameraServer();
+
 
 unsigned long lastMovingTime = 0;
 const unsigned long DEEP_SLEEP_TIMEOUT_MS = 1800000; // 30 minutes
@@ -64,8 +63,7 @@ void setup() {
   // 6. Initialize Temperature Sensor
   setupTemperature();
 
-  // 7. Initialize Camera Wi-Fi SoftAP and HTTP Server
-  setupCameraServer();
+
 
   lastMovingTime = millis();
 }
@@ -90,12 +88,24 @@ void loop() {
   // 6. Read Temperature
   loopTemperature();
 
-  // 7. Handle incoming Camera file uploads over Wi-Fi
-  loopCameraServer();
+
+
+  // --- Security Logic: Unauthorized Movement ---
+  bool isEngineLocked = (digitalRead(ACC_RELAY_PIN) == LOW);
+  bool isMoving = (gps.speed.isValid() && gps.speed.kmph() > 5.0);
+
+  if (isEngineLocked && isMoving) {
+    digitalWrite(ALARM_SIREN_PIN, HIGH); // Sound alarm if moving while locked
+    extern void publishAlert(String, String);
+    static unsigned long lastMovingAlert = 0;
+    if (millis() - lastMovingAlert > 10000) {
+      publishAlert("danger", "UNAUTHORIZED MOVEMENT DETECTED!");
+      lastMovingAlert = millis();
+    }
+  }
 
   // --- Deep Sleep Logic ---
-  bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == LOW);
-  bool isMoving = (gps.speed.isValid() && gps.speed.kmph() > 5.0);
+  bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == HIGH);
 
   if (isMoving || !isAccOff) {
     lastMovingTime = millis(); // Reset sleep timer

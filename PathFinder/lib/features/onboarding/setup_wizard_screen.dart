@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/routes/app_routes.dart';
 import '../../shared/widgets/custom_button.dart';
 import '../../shared/widgets/custom_textfield.dart';
+import '../../shared/widgets/qr_scanner_screen.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SetupWizardScreen extends StatefulWidget {
   const SetupWizardScreen({super.key});
@@ -29,6 +32,35 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
     } else {
       // Complete wizard
       Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
+    }
+  }
+
+  void _scanQRCode() async {
+    if (kIsWeb) {
+      return; // Fallback or dialog for web could be implemented here
+    }
+
+    final status = await Permission.camera.request();
+    if (status.isDenied || status.isPermanentlyDenied) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera permission is required to scan QR codes.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    final result = await Navigator.push<String?>(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        _serialController.text = result;
+      });
     }
   }
 
@@ -88,10 +120,29 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                CustomTextField(
-                  label: 'Hardware Serial Number',
-                  hint: 'e.g., TRK-ESP32-8821',
-                  controller: _serialController,
+                Row(
+                  children: [
+                    Expanded(
+                      child: CustomTextField(
+                        label: 'Hardware Serial Number',
+                        hint: 'e.g., TRK-ESP32-8821',
+                        controller: _serialController,
+                        prefixIcon: Icons.qr_code,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                        onPressed: _scanQRCode,
+                        tooltip: 'Scan QR Code',
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 CustomTextField(

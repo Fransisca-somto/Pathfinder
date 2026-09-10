@@ -49,14 +49,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
 
     if (isFirstLaunch) {
       Navigator.pushReplacementNamed(context, AppRoutes.onboarding);
+    } else {
       // Try to load token
       final authService = ref.read(authServiceProvider);
       final isLoggedIn = await authService.loadUser();
 
       if (isLoggedIn) {
-        // Here we could also fetch /auth/me and setUser, but for now we'll just go to login to be safe, 
-        // or let Dashboard handle it. Actually, if isLoggedIn is true, let's just go to login for now since we don't have a /me endpoint mapped yet.
-        Navigator.pushReplacementNamed(context, AppRoutes.login);
+        // If logged in, go straight to dashboard
+        Navigator.pushReplacementNamed(context, '/dashboard'); // assuming '/dashboard' is the route
       } else {
         Navigator.pushReplacementNamed(context, AppRoutes.login);
       }

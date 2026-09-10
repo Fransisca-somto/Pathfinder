@@ -1,1 +1,1 @@
-{"version":3,"file":"tripService.d.ts","sourceRoot":"","sources":["../../src/services/tripService.ts"],"names":[],"mappings":"AAkDA,eAAO,MAAM,SAAS,cAAqB,MAAM,OAAO,MAAM,OAAO,MAAM,kBAqB1E,CAAC;AAEF,eAAO,MAAM,OAAO,cAAqB,MAAM,OAAO,MAAM,OAAO,MAAM,kBAoDxE,CAAC"}
+{"version":3,"file":"tripService.d.ts","sourceRoot":"","sources":["../../src/services/tripService.ts"],"names":[],"mappings":"AAqDA,eAAO,MAAM,SAAS,cAAqB,MAAM,OAAO,MAAM,OAAO,MAAM,kBAuB1E,CAAC;AAEF,eAAO,MAAM,oBAAoB,cAAe,MAAM,OAAO,MAAM,OAAO,MAAM,SAW/E,CAAC;AAEF,eAAO,MAAM,OAAO,cAAqB,MAAM,OAAO,MAAM,OAAO,MAAM,kBA6DxE,CAAC"}

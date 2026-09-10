@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTrips = exports.assignDriver = exports.updateVehicle = exports.deleteVehicle = exports.getVehicleById = exports.getVehicles = exports.registerVehicle = exports.setAuthBypass = exports.toggleFingerprintStatus = exports.deleteFingerprint = exports.addFingerprint = exports.getFingerprints = void 0;
+exports.getTrips = exports.assignDriver = exports.updateVehicle = exports.deleteVehicle = exports.getVehicleById = exports.getVehicles = exports.registerVehicle = exports.soundAlarm = exports.setAuthBypass = exports.toggleFingerprintStatus = exports.deleteFingerprint = exports.addFingerprint = exports.getFingerprints = void 0;
 const supabase_1 = require("../config/supabase");
 const mqttService_1 = require("../services/mqttService");
 const socketManager_1 = require("../sockets/socketManager");
@@ -236,6 +236,31 @@ const setAuthBypass = async (req, res) => {
     }
 };
 exports.setAuthBypass = setAuthBypass;
+// POST /vehicles/:id/alarm
+const soundAlarm = async (req, res) => {
+    try {
+        const ownerId = req.user.id;
+        const vehicleId = req.params.id;
+        const { state } = req.body; // boolean
+        const { data: vehicle } = await supabase_1.supabase
+            .from('vehicles')
+            .select('device_id')
+            .eq('id', vehicleId)
+            .eq('owner_id', ownerId)
+            .single();
+        if (!vehicle) {
+            res.status(404).json({ error: 'Vehicle not found' });
+            return;
+        }
+        (0, mqttService_1.publishCommand)(vehicle.device_id, 'soundAlarm', { state: !!state });
+        res.status(200).json({ message: 'Alarm command sent to vehicle' });
+    }
+    catch (err) {
+        console.error('[Vehicle] Sound alarm error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.soundAlarm = soundAlarm;
 // POST /vehicles/register — Owner claims a device
 const registerVehicle = async (req, res) => {
     try {

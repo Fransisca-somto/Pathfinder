@@ -267,6 +267,34 @@ export const setAuthBypass = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+// POST /vehicles/:id/alarm
+export const soundAlarm = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = req.user.id;
+    const vehicleId = req.params.id;
+    const { state } = req.body; // boolean
+
+    const { data: vehicle } = await supabase
+      .from('vehicles')
+      .select('device_id')
+      .eq('id', vehicleId)
+      .eq('owner_id', ownerId)
+      .single();
+
+    if (!vehicle) {
+      res.status(404).json({ error: 'Vehicle not found' });
+      return;
+    }
+
+    publishCommand(vehicle.device_id, 'soundAlarm', { state: !!state });
+    
+    res.status(200).json({ message: 'Alarm command sent to vehicle' });
+  } catch (err) {
+    console.error('[Vehicle] Sound alarm error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 // POST /vehicles/register — Owner claims a device
 export const registerVehicle = async (req: Request, res: Response): Promise<void> => {
   try {

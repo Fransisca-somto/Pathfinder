@@ -260,7 +260,7 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                         _buildMetricCard('Speed', '${speed.toStringAsFixed(1)} km/h', Icons.speed, isDark),
                         _buildMetricCard('Battery', '${batteryVoltage.toStringAsFixed(1)}V ($batteryPct%)', Icons.battery_charging_full, isDark),
                         _buildMetricCard('Engine Temp', '${vehicle.engineTemperature.toStringAsFixed(1)}°C', Icons.thermostat, isDark, isWarning: vehicle.engineTemperature > 105.0),
-                        _buildMetricCard('Engine', isEngineCutOff ? 'CUT-OFF' : 'RUNNING', Icons.power_settings_new, isDark, isWarning: isEngineCutOff),
+                        _buildMetricCard('Engine', vehicle.engineRunning ? 'RUNNING' : 'OFF', Icons.power_settings_new, isDark, isWarning: vehicle.isEngineLocked),
                       ],
                     );
                   }
@@ -283,6 +283,12 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                         child: CustomButton(
                           label: vehicle.isEngineLocked ? 'Unlock Engine' : 'Lock Engine',
                           onPressed: () async {
+                            if (vehicle.currentStatus == VehicleStatus.offline) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Tracker is offline. Please wait until it comes online.'), backgroundColor: AppColors.warning),
+                              );
+                              return;
+                            }
                             try {
                               // If it is locked, we send true to bypass. If unlocked, send false to lock.
                               final bypassState = vehicle.isEngineLocked;
@@ -303,24 +309,80 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                           color: vehicle.isEngineLocked ? AppColors.success : AppColors.danger,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                    ],
-                    Expanded(
-                      child: CustomButton(
-                        label: 'Driver Auth',
-                        isOutlined: true,
-                        icon: Icons.fingerprint,
-                        onPressed: () {
-                          Navigator.pushNamed(
-                            context, 
-                            '/driver-auth',
-                            arguments: vehicle,
-                          );
-                        },
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: CustomButton(
+                          label: 'Sound Alarm',
+                          icon: Icons.notifications_active,
+                          onPressed: () async {
+                            if (vehicle.currentStatus == VehicleStatus.offline) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Tracker is offline. Please wait until it comes online.'), backgroundColor: AppColors.warning),
+                              );
+                              return;
+                            }
+                            try {
+                              await ref.read(apiClientProvider).post('/vehicles/${vehicle.vehicleId}/alarm', {
+                                'state': true // Turn alarm ON
+                              });
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Alarm triggered for ${vehicle.vehicleName}'), backgroundColor: AppColors.warning),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to trigger alarm'), backgroundColor: AppColors.danger),
+                              );
+                            }
+                          },
+                          color: AppColors.warning,
+                        ),
                       ),
-                    ),
+                    ] else ...[
+                      Expanded(
+                        child: CustomButton(
+                          label: 'Driver Auth',
+                          isOutlined: true,
+                          icon: Icons.fingerprint,
+                          onPressed: () {
+                            if (vehicle.currentStatus == VehicleStatus.offline) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Tracker is offline. Cannot manage fingerprints right now.'), backgroundColor: AppColors.warning),
+                              );
+                              return;
+                            }
+                            Navigator.pushNamed(
+                              context, 
+                              '/driver-auth',
+                              arguments: vehicle,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
+                if (user.role == UserRole.owner || user.role == UserRole.manager) ...[
+                  const SizedBox(height: 16),
+                  CustomButton(
+                    label: 'Manage Fingerprints',
+                    icon: Icons.fingerprint,
+                    isOutlined: true,
+                    onPressed: () {
+                      if (vehicle.currentStatus == VehicleStatus.offline) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Tracker is offline. Cannot manage fingerprints right now.'), backgroundColor: AppColors.warning),
+                        );
+                        return;
+                      }
+                      Navigator.pushNamed(
+                        context, 
+                        '/driver-auth',
+                        arguments: vehicle,
+                      );
+                    },
+                  ),
+                ],
                 const SizedBox(height: 16),
                 CustomButton(
                   label: 'View Route History',

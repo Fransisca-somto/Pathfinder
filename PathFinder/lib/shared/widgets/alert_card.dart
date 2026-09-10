@@ -42,6 +42,11 @@ class AlertCard extends StatelessWidget {
       if (alert.alertType == AlertType.authFailure || alert.alertType == AlertType.engineLock) {
         return false;
       }
+      
+      // Drivers shouldn't see 'Dismiss' if they can't dismiss
+      if (alert.alertType.color == AppColors.danger && _getActionLabel() == 'Dismiss') {
+        return false;
+      }
     }
     return alert.requiresAction;
   }
@@ -55,13 +60,12 @@ class AlertCard extends StatelessWidget {
         ? (isDark ? AppColors.surfaceDark : AppColors.surfaceLight)
         : (isDark ? AppColors.secondary.withOpacity(0.1) : AppColors.secondary.withOpacity(0.05));
 
-    return Dismissible(
-      key: Key(alert.alertId),
-      onDismissed: (direction) => onDismissed(),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+    final bool canDismiss = (userRole == UserRole.owner || userRole == UserRole.manager) || (alert.alertType.color != AppColors.danger);
+
+    Widget cardContent = Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -137,7 +141,15 @@ class AlertCard extends StatelessWidget {
             ]
           ],
         ),
-      ),
     );
+
+    if (canDismiss) {
+      return Dismissible(
+        key: Key(alert.alertId),
+        onDismissed: (direction) => onDismissed(),
+        child: cardContent,
+      );
+    }
+    return cardContent;
   }
 }

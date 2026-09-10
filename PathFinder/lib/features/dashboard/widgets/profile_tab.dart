@@ -174,17 +174,6 @@ class ProfileTab extends ConsumerWidget {
                     },
                     isDark: isDark,
                   ),
-                  if (user.role == UserRole.owner || user.role == UserRole.manager) ...[
-                    Divider(height: 1, color: isDark ? AppColors.dividerDark : AppColors.dividerLight),
-                    _buildListTile(
-                      context,
-                      icon: Icons.speed,
-                      title: 'System Performance',
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.systemPerformance),
-                      isDark: isDark,
-                    ),
-                  ],
                 ],
               ),
             ),

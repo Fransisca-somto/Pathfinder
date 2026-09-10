@@ -4,6 +4,7 @@ export declare const addFingerprint: (req: Request, res: Response) => Promise<vo
 export declare const deleteFingerprint: (req: Request, res: Response) => Promise<void>;
 export declare const toggleFingerprintStatus: (req: Request, res: Response) => Promise<void>;
 export declare const setAuthBypass: (req: Request, res: Response) => Promise<void>;
+export declare const soundAlarm: (req: Request, res: Response) => Promise<void>;
 export declare const registerVehicle: (req: Request, res: Response) => Promise<void>;
 export declare const getVehicles: (req: Request, res: Response) => Promise<void>;
 export declare const getVehicleById: (req: Request, res: Response) => Promise<void>;

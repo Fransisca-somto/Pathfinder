@@ -21,6 +21,8 @@ class VehicleModel {
   final int gpsSignalStrength;
   final double engineTemperature;
   final double batteryVoltage;
+  final int? _batteryPercentage;
+  final bool engineRunning;
 
   const VehicleModel({
     required this.vehicleId,
@@ -43,9 +45,12 @@ class VehicleModel {
     this.gpsSignalStrength = 4,
     this.engineTemperature = 0.0,
     this.batteryVoltage = 12.0,
-  });
+    int? batteryPercentage,
+    this.engineRunning = false,
+  }) : _batteryPercentage = batteryPercentage;
 
   int get batteryPercentage {
+    if (_batteryPercentage != null) return _batteryPercentage!;
     if (batteryVoltage >= 12.6) return 100;
     if (batteryVoltage <= 11.9) return 0;
     return ((batteryVoltage - 11.9) / (12.6 - 11.9) * 100).round();
@@ -72,6 +77,8 @@ class VehicleModel {
     int? gpsSignalStrength,
     double? engineTemperature,
     double? batteryVoltage,
+    int? batteryPercentage,
+    bool? engineRunning,
   }) {
     return VehicleModel(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -94,6 +101,8 @@ class VehicleModel {
       gpsSignalStrength: gpsSignalStrength ?? this.gpsSignalStrength,
       engineTemperature: engineTemperature ?? this.engineTemperature,
       batteryVoltage: batteryVoltage ?? this.batteryVoltage,
+      batteryPercentage: batteryPercentage ?? this._batteryPercentage,
+      engineRunning: engineRunning ?? this.engineRunning,
     );
   }
 
@@ -131,6 +140,8 @@ class VehicleModel {
       gpsSignalStrength: json['gpsSignalStrength'] ?? 4,
       engineTemperature: (json['engine_temperature'] ?? 0.0).toDouble(),
       batteryVoltage: (json['battery_voltage'] ?? 12.0).toDouble(),
+      batteryPercentage: json['battery'],
+      engineRunning: json['acc'] ?? false,
     );
   }
 }

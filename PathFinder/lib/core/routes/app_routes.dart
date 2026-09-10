@@ -13,7 +13,6 @@ import '../../features/fleet/vehicle_settings_screen.dart';
 import '../../features/zones/zone_management_screen.dart';
 import '../../features/fleet/driver_auth_screen.dart';
 import '../../features/fleet/route_history_screen.dart';
-import '../../features/dashboard/widgets/system_performance_screen.dart';
 import '../../core/models/vehicle_model.dart';
 
 import '../../features/profile/edit_profile_screen.dart';
@@ -40,7 +39,6 @@ class AppRoutes {
   static const String zoneManagement = '/zone-management';
   static const String driverAuth = '/driver-auth';
   static const String routeHistory = '/route-history';
-  static const String systemPerformance = '/system-performance';
   
   static const String editProfile = '/edit-profile';
   static const String pushNotifications = '/push-notifications';
@@ -91,8 +89,7 @@ class AppRoutes {
       case routeHistory:
         final vehicle = settings.arguments as VehicleModel;
         return MaterialPageRoute(builder: (_) => RouteHistoryScreen(vehicle: vehicle));
-      case systemPerformance:
-        return MaterialPageRoute(builder: (_) => const SystemPerformanceScreen());
+
       case editProfile:
         return MaterialPageRoute(builder: (_) => const EditProfileScreen());
       case pushNotifications:

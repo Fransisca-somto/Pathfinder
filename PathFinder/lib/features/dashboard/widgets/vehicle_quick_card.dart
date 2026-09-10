@@ -6,6 +6,7 @@ import '../../../core/enums/vehicle_status.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/enums/user_role.dart';
+import '../../../core/services/api_client.dart';
 import '../../../shared/widgets/custom_button.dart';
 
 class VehicleQuickCard extends ConsumerWidget {
@@ -122,7 +123,7 @@ class VehicleQuickCard extends ConsumerWidget {
               _TelemetryItem(
                 icon: Icons.power,
                 label: 'Ignition',
-                value: vehicle.currentSpeed > 0 ? 'ON' : 'OFF',
+                value: vehicle.engineRunning ? 'ON' : 'OFF',
                 isDark: isDark,
               ),
               _TelemetryItem(
@@ -155,13 +156,53 @@ class VehicleQuickCard extends ConsumerWidget {
                 ),
               ),
               if (role == UserRole.owner || role == UserRole.manager) ...[
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: CustomButton(
+                    label: 'Alarm',
+                    icon: Icons.notifications_active,
+                    color: AppColors.warning,
+                    onPressed: () async {
+                      if (vehicle.currentStatus == VehicleStatus.offline) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Tracker is offline. Please wait until it comes online.'), backgroundColor: AppColors.warning),
+                        );
+                        return;
+                      }
+                      try {
+                        await ref.read(apiClientProvider).post('/vehicles/${vehicle.vehicleId}/alarm', {
+                          'state': true
+                        });
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Alarm triggered for ${vehicle.vehicleName}'), backgroundColor: AppColors.warning),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to trigger alarm'), backgroundColor: AppColors.danger),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: CustomButton(
                     label: 'Engine',
                     icon: Icons.power_settings_new,
                     color: AppColors.danger,
-                    onPressed: () => _showEngineControl(context),
+                    onPressed: () {
+                      if (vehicle.currentStatus == VehicleStatus.offline) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Tracker is offline. Please wait until it comes online.'), backgroundColor: AppColors.warning),
+                        );
+                        return;
+                      }
+                      _showEngineControl(context);
+                    },
                   ),
                 ),
               ]

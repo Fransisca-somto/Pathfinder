@@ -272,15 +272,14 @@ void handleAuthFailure() {
 
   // Escalating security response based on strike count
   if (failedAttempts == 3) {
-    publishAlert("authFailure", "3 failed attempts. Capturing silent image...");
-    // Future: trigger ESP-NOW to camera module
+    publishAlert("authSilent", "3 failed attempts. Capturing silent image...");
   } else if (failedAttempts == 4) {
-    publishAlert("authFailure", "4 failed attempts. Warning!");
+    publishAlert("authSilent", "4 failed attempts. Warning!");
   } else if (failedAttempts >= 5) {
     publishAlert("authFailure", "CRITICAL: 5 failed attempts! Alarm activated!");
     digitalWrite(ALARM_SIREN_PIN, HIGH); // Full alarm siren ON
   } else {
-    publishAlert("authFailure", "Unauthorized ignition attempt detected!");
+    publishAlert("authSilent", "Silent: Unauthorized fingerprint scan attempt.");
   }
 }
 

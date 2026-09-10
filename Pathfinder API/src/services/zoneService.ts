@@ -102,7 +102,7 @@ export const refreshZoneCache = async () => {
 refreshZoneCache();
 
 // --- Processing Logic ---
-export const processVehicleLocation = async (vehicleId: string, deviceId: string, lat: number, lng: number, ownerId: string) => {
+export const processVehicleLocation = async (vehicleId: string, deviceId: string, lat: number, lng: number, acc: boolean, ownerId: string) => {
   if (!vehicleZoneState.has(vehicleId)) {
     vehicleZoneState.set(vehicleId, new Map());
   }
@@ -120,42 +120,33 @@ export const processVehicleLocation = async (vehicleId: string, deviceId: string
       stateMap.set(zoneId, 'inside');
       console.log(`[ZoneService] Vehicle ${deviceId} ENTERED zone ${zone.name}`);
 
-      if (zone.type === 'restricted') {
-        // Automatically lock engine!
-        console.log(`[ZoneService] Restricted zone entered. LOCKING ENGINE for ${deviceId}!`);
-        await supabase.from('vehicles').update({ is_engine_locked: true }).eq('id', vehicleId);
-        
-        publishCommand(deviceId, 'LOCK_ENGINE');
-        
-        triggerAlert({
-          deviceId,
-          type: 'zoneEnter',
-          message: `UNSAFE ZONE ENTRY: Vehicle entered '${zone.name}'. ENGINE DISABLED automatically.`
-        });
-      } else {
-        triggerAlert({
-          deviceId,
-          type: 'zoneEnter',
-          message: `Vehicle entered zone: ${zone.name}`
-        });
-      }
+      triggerAlert({
+        deviceId,
+        type: 'zoneEnter',
+        message: `Vehicle returned to safe zone: ${zone.name}`
+      });
 
     } else if (!isInsideNow && wasInsideBefore) {
       // Transition: INSIDE -> OUTSIDE
       stateMap.set(zoneId, 'outside');
       console.log(`[ZoneService] Vehicle ${deviceId} EXITED zone ${zone.name}`);
 
-      if (zone.type === 'safe') {
+      // Lock engine immediately!
+      await supabase.from('vehicles').update({ is_engine_locked: true }).eq('id', vehicleId);
+      publishCommand(deviceId, 'setAuthBypass', { state: false }); // Ensure ESP32 locks it
+
+      if (acc === false) {
+        // Towed (Moving but ACC is off)
         triggerAlert({
           deviceId,
-          type: 'zoneExit',
-          message: `WARNING: Vehicle exited safe zone: ${zone.name}`
+          type: 'danger',
+          message: `SILENT ALERT: Vehicle is exiting safe zone '${zone.name}' while engine is OFF (Possible Towing).`
         });
       } else {
         triggerAlert({
           deviceId,
-          type: 'zoneExit',
-          message: `Vehicle exited zone: ${zone.name}`
+          type: 'danger',
+          message: `DANGER: Vehicle exited safe zone '${zone.name}'. Engine Locked. ONLY Owner can unlock.`
         });
       }
     }

@@ -181,9 +181,12 @@ const handleTelemetry = async (data) => {
         else if (prevStatus === 'moving' && (finalStatus === 'parked' || finalStatus === 'offline')) {
             await (0, tripService_1.endTrip)(vehicleId, data.lat, data.lng);
         }
+        else if (finalStatus === 'moving') {
+            (0, tripService_1.appendTripCoordinate)(vehicleId, data.lat, data.lng);
+        }
         deviceStatusCache.set(deviceId, finalStatus);
         // Evaluate against assigned zones
-        await (0, zoneService_1.processVehicleLocation)(vehicleId, deviceId, data.lat, data.lng, ownerId);
+        await (0, zoneService_1.processVehicleLocation)(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
     }
     // ---------------------------
     // Build the telemetry payload
@@ -192,6 +195,8 @@ const handleTelemetry = async (data) => {
         lat: data.lat,
         lng: data.lng,
         speed: data.speed,
+        acc: data.acc,
+        battery: data.battery,
         temperature: data.temperature,
         status: finalStatus,
         timestamp: new Date().toISOString(),

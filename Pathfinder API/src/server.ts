@@ -8,7 +8,7 @@ import authRoutes from './routes/authRoutes';
 import vehicleRoutes from './routes/vehicleRoutes';
 import alertRoutes from './routes/alertRoutes';
 import zoneRoutes from './routes/zoneRoutes';
-import uploadRoutes from './routes/uploadRoutes';
+
 import { initializeSockets } from './sockets/socketManager';
 import { initializeMqtt } from './services/mqttService';
 
@@ -29,7 +29,7 @@ app.use('/auth', authRoutes);
 app.use('/vehicles', vehicleRoutes);
 app.use('/alerts', alertRoutes);
 app.use('/zones', zoneRoutes);
-app.use('/api/upload', uploadRoutes);
+
 
 // Basic health check
 app.get('/health', (req, res) => {

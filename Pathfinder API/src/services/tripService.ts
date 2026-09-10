@@ -15,6 +15,9 @@ const calculateDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: num
   return R * c;
 };
 
+// Memory Cache for active trip coordinates to draw Polyline later
+const activeTripCoordinates: Map<string, [number, number][]> = new Map();
+
 // Helper: Reverse Geocoding with Nominatim OSM
 const getAddressFromCoords = async (lat: number, lng: number): Promise<string> => {
   try {
@@ -65,9 +68,24 @@ export const startTrip = async (vehicleId: string, lat: number, lng: number) => 
 
     if (error) {
       console.error('[TripService] Failed to insert new trip:', error);
+    } else {
+      activeTripCoordinates.set(vehicleId, [[lat, lng]]);
     }
   } catch (err) {
     console.error('[TripService] startTrip error:', err);
+  }
+};
+
+export const appendTripCoordinate = (vehicleId: string, lat: number, lng: number) => {
+  if (activeTripCoordinates.has(vehicleId)) {
+    const path = activeTripCoordinates.get(vehicleId)!;
+    if (path.length > 0) {
+      const lastCoords = path[path.length - 1];
+      // Only append if location changed slightly to save memory
+      if (!lastCoords || lastCoords[0] !== lat || lastCoords[1] !== lng) {
+        path.push([lat, lng]);
+      }
+    }
   }
 };
 
@@ -101,6 +119,13 @@ export const endTrip = async (vehicleId: string, lat: number, lng: number) => {
     // 4. Reverse Geocode End Location
     const endAddress = await getAddressFromCoords(lat, lng);
 
+    // Get cached polyline path
+    const routePath = activeTripCoordinates.get(vehicleId) || [];
+    const lastPoint = routePath[routePath.length - 1];
+    if (routePath.length === 0 || !lastPoint || lastPoint[0] !== lat) {
+        routePath.push([lat, lng]);
+    }
+
     // 5. Update the trip
     const { error: updateError } = await supabase
       .from('trips')
@@ -110,14 +135,16 @@ export const endTrip = async (vehicleId: string, lat: number, lng: number) => {
         end_lng: lng,
         end_address: endAddress,
         distance_km: parseFloat(distanceKm.toFixed(2)),
-        duration_mins: durationMins
+        duration_mins: durationMins,
+        route_path: routePath
       })
       .eq('id', openTrip.id);
 
     if (updateError) {
       console.error('[TripService] Failed to update ended trip:', updateError);
     } else {
-      console.log(`[TripService] Trip ${openTrip.id} ended successfully.`);
+      console.log(`[TripService] Trip ${openTrip.id} ended successfully. Saved ${routePath.length} coordinates.`);
+      activeTripCoordinates.delete(vehicleId);
     }
 
   } catch (err) {

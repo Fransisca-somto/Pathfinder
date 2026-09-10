@@ -63,7 +63,7 @@ void loopAccelerometer() {
   }
 
   // 2. Theft Detection (If ACC is OFF and parked)
-  bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == LOW);
+  bool isAccOff = (digitalRead(ACC_IGNITION_PIN) == HIGH);
   
   if (isAccOff && totalAccel > THEFT_THRESHOLD_MS2) {
     if (now - lastTheftAlertTime > ALERT_COOLDOWN_MS) {

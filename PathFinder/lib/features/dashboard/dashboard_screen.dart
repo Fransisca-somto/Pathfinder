@@ -22,14 +22,31 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Start mock MQTT stream
     ref.read(mqttServiceProvider).connect();
     // Initialize actual WebSocket connection
     ref.read(socketServiceProvider);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh global data when app comes to foreground
+      ref.invalidate(vehiclesProvider);
+      ref.invalidate(zonesProvider);
+      ref.invalidate(alertsProvider);
+    }
   }
 
   @override

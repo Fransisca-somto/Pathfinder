@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/models/vehicle_model.dart';
 import '../../core/providers/app_providers.dart';
@@ -154,6 +156,53 @@ class RouteHistoryScreen extends ConsumerWidget {
                             ),
                           ),
                         ],
+                      ),
+                    ],
+                    if (trip.routePath.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 200,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: FlutterMap(
+                            options: MapOptions(
+                              initialCenter: LatLng(trip.routePath.first[0], trip.routePath.first[1]),
+                              initialZoom: 14.0,
+                              interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.pathfinder.app',
+                              ),
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: trip.routePath.map((p) => LatLng(p[0], p[1])).toList(),
+                                    strokeWidth: 4.0,
+                                    color: AppColors.secondary,
+                                  ),
+                                ],
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: LatLng(trip.routePath.first[0], trip.routePath.first[1]),
+                                    width: 40,
+                                    height: 40,
+                                    child: const Icon(Icons.location_on, color: Colors.green, size: 30),
+                                  ),
+                                  Marker(
+                                    point: LatLng(trip.routePath.last[0], trip.routePath.last[1]),
+                                    width: 40,
+                                    height: 40,
+                                    child: const Icon(Icons.location_on, color: Colors.red, size: 30),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ],

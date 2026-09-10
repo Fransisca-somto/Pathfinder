@@ -11,6 +11,7 @@ class TripModel {
   final String? endAddress;
   final double? distanceKm;
   final int? durationMins;
+  final List<List<double>> routePath;
 
   TripModel({
     required this.id,
@@ -25,6 +26,7 @@ class TripModel {
     this.endAddress,
     this.distanceKm,
     this.durationMins,
+    this.routePath = const [],
   });
 
   factory TripModel.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,12 @@ class TripModel {
       endAddress: json['end_address'],
       distanceKm: json['distance_km']?.toDouble(),
       durationMins: json['duration_mins'],
+      routePath: json['route_path'] != null 
+          ? (json['route_path'] as List).map((point) => [
+              (point[0] as num).toDouble(),
+              (point[1] as num).toDouble(),
+            ]).toList()
+          : [],
     );
   }
 }
