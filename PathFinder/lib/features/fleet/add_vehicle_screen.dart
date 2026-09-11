@@ -1,13 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/services/api_client.dart';
-import '../../shared/widgets/custom_button.dart';
 import '../../shared/widgets/custom_button.dart';
 import '../../shared/widgets/custom_textfield.dart';
 import '../../shared/widgets/qr_scanner_screen.dart';
@@ -71,14 +68,23 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
   }
 
   void _scanQRCode() async {
-    // On web show a dialog for manual entry
     if (kIsWeb) {
       _showManualEntryDialog();
       return;
     }
 
-    final status = await Permission.camera.request();
-    if (status.isDenied || status.isPermanentlyDenied) {
+    try {
+      final result = await Navigator.push<String?>(
+        context,
+        MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+      );
+
+      if (result != null && result.isNotEmpty) {
+        setState(() {
+          _deviceIdController.text = result;
+        });
+      }
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -86,18 +92,6 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
           backgroundColor: AppColors.danger,
         ),
       );
-      return;
-    }
-
-    final result = await Navigator.push<String?>(
-      context,
-      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
-    );
-
-    if (result != null && result.isNotEmpty) {
-      setState(() {
-        _deviceIdController.text = result;
-      });
     }
   }
 

@@ -29,6 +29,7 @@ const register = async (req, res) => {
             }
         });
         if (error) {
+            console.error('[Register] Supabase signUp error:', error.message, error);
             res.status(400).json({ error: error.message });
             return;
         }

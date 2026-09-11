@@ -5,7 +5,6 @@ import '../../core/routes/app_routes.dart';
 import '../../shared/widgets/custom_button.dart';
 import '../../shared/widgets/custom_textfield.dart';
 import '../../shared/widgets/qr_scanner_screen.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class SetupWizardScreen extends StatefulWidget {
   const SetupWizardScreen({super.key});
@@ -37,11 +36,21 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
 
   void _scanQRCode() async {
     if (kIsWeb) {
-      return; // Fallback or dialog for web could be implemented here
+      return;
     }
 
-    final status = await Permission.camera.request();
-    if (status.isDenied || status.isPermanentlyDenied) {
+    try {
+      final result = await Navigator.push<String?>(
+        context,
+        MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+      );
+
+      if (result != null && result.isNotEmpty) {
+        setState(() {
+          _serialController.text = result;
+        });
+      }
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -49,18 +58,6 @@ class _SetupWizardScreenState extends State<SetupWizardScreen> {
           backgroundColor: AppColors.danger,
         ),
       );
-      return;
-    }
-
-    final result = await Navigator.push<String?>(
-      context,
-      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
-    );
-
-    if (result != null && result.isNotEmpty) {
-      setState(() {
-        _serialController.text = result;
-      });
     }
   }
 

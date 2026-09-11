@@ -10,20 +10,10 @@ class ApiClient {
   final _storage = const FlutterSecureStorage();
 
   String get _baseUrl {
-    final fallback = 'https://pathfinder-unizk.up.railway.app';
-    String url = fallback;
-    try {
-      if (dotenv.isInitialized) {
-        final envUrl = dotenv.env['API_URL'];
-        print('[ApiClient] dotenv API_URL = $envUrl');
-        url = (envUrl != null && envUrl.isNotEmpty) ? envUrl : fallback;
-      } else {
-        print('[ApiClient] dotenv NOT initialized, using fallback');
-      }
-    } catch (e) {
-      print('[ApiClient] dotenv error: $e');
+    final url = dotenv.env['API_URL'] ?? '';
+    if (url.isEmpty) {
+      throw Exception('API_URL is not set in the .env file');
     }
-    print('[ApiClient] Final baseUrl = $url');
     return url;
   }
 

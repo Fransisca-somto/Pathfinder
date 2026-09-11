@@ -20,13 +20,10 @@ class SocketService {
 
   void connect({String? userId}) {
     _userId = userId;
-    String apiUrl = 'https://pathfinder-unizk.up.railway.app';
-    try {
-      if (dotenv.isInitialized) {
-        apiUrl = dotenv.env['API_URL'] ?? apiUrl;
-      }
-    } catch (_) {
-      // Ignored
+    final apiUrl = dotenv.env['WS_URL'] ?? dotenv.env['API_URL'] ?? '';
+    if (apiUrl.isEmpty) {
+      debugPrint('[WebSocket] WS_URL/API_URL not set in .env file');
+      return;
     }
     
     _socket = IO.io(apiUrl, IO.OptionBuilder()

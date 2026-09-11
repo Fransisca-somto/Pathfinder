@@ -31,6 +31,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (error) {
+      console.error('[Register] Supabase signUp error:', error.message, error);
       res.status(400).json({ error: error.message });
       return;
     }
