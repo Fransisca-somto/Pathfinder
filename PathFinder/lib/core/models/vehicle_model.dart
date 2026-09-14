@@ -19,10 +19,14 @@ class VehicleModel {
   final String deviceId;
   final String connectionMode;
   final int gpsSignalStrength;
-  final double engineTemperature;
+  final double? engineTemperature;
   final double batteryVoltage;
   final int? _batteryPercentage;
   final bool engineRunning;
+  final bool charging;
+  final bool powerCut;
+  final int currentDriverId;
+  final String? emergencyContact;
 
   const VehicleModel({
     required this.vehicleId,
@@ -43,10 +47,14 @@ class VehicleModel {
     required this.deviceId,
     this.connectionMode = 'GPRS',
     this.gpsSignalStrength = 4,
-    this.engineTemperature = 0.0,
+    this.engineTemperature,
     this.batteryVoltage = 12.0,
     int? batteryPercentage,
     this.engineRunning = false,
+    this.charging = false,
+    this.powerCut = false,
+    this.currentDriverId = -1,
+    this.emergencyContact,
   }) : _batteryPercentage = batteryPercentage;
 
   int get batteryPercentage {
@@ -79,6 +87,10 @@ class VehicleModel {
     double? batteryVoltage,
     int? batteryPercentage,
     bool? engineRunning,
+    bool? charging,
+    bool? powerCut,
+    int? currentDriverId,
+    String? emergencyContact,
   }) {
     return VehicleModel(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -103,6 +115,10 @@ class VehicleModel {
       batteryVoltage: batteryVoltage ?? this.batteryVoltage,
       batteryPercentage: batteryPercentage ?? this._batteryPercentage,
       engineRunning: engineRunning ?? this.engineRunning,
+      charging: charging ?? this.charging,
+      powerCut: powerCut ?? this.powerCut,
+      currentDriverId: currentDriverId ?? this.currentDriverId,
+      emergencyContact: emergencyContact ?? this.emergencyContact,
     );
   }
 
@@ -138,10 +154,14 @@ class VehicleModel {
       deviceId: json['device_id'] ?? json['deviceImei'] ?? json['deviceId'] ?? '',
       connectionMode: json['connectionMode'] ?? 'GPRS',
       gpsSignalStrength: json['gpsSignalStrength'] ?? 4,
-      engineTemperature: (json['engine_temperature'] ?? 0.0).toDouble(),
+      engineTemperature: (json['engine_temperature'] as num?)?.toDouble(),
       batteryVoltage: (json['battery_voltage'] ?? 12.0).toDouble(),
       batteryPercentage: json['battery'],
       engineRunning: json['acc'] ?? false,
+      charging: json['charging'] ?? false,
+      powerCut: json['power_cut'] ?? false,
+      currentDriverId: json['current_driver_id'] ?? -1,
+      emergencyContact: json['emergency_contact'] ?? json['emergencyContact'],
     );
   }
 }

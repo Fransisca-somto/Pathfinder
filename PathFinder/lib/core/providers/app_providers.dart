@@ -127,9 +127,16 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
       final lat = (data['lat'] as num?)?.toDouble();
       final lng = (data['lng'] as num?)?.toDouble();
       final speed = (data['speed'] as num?)?.toDouble();
-      final temp = (data['temperature'] as num?)?.toDouble();
+      final temp = data.containsKey('temperature') 
+          ? (data['temperature'] as num?)?.toDouble() 
+          : null;
+      final hasTempKey = data.containsKey('temperature');
       final acc = data['acc'] as bool?;
       final batteryPct = data['battery'] as int?;
+      final batteryVoltage = (data['battery_voltage'] as num?)?.toDouble();
+      final isCharging = data['charging'] as bool?;
+      final isPowerCut = data['power_cut'] as bool?;
+      final driverId = data['driverId'] as int?;
       final statusStr = data['status'] as String?;
       
       VehicleStatus? parsedStatus;
@@ -146,10 +153,14 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
             currentLatitude: lat ?? v.currentLatitude,
             currentLongitude: lng ?? v.currentLongitude,
             currentSpeed: speed ?? v.currentSpeed,
-            engineTemperature: temp ?? v.engineTemperature,
+            engineTemperature: hasTempKey ? temp : v.engineTemperature,
             currentStatus: parsedStatus ?? v.currentStatus,
             engineRunning: acc ?? v.engineRunning,
             batteryPercentage: batteryPct ?? v.batteryPercentage,
+            batteryVoltage: batteryVoltage ?? v.batteryVoltage,
+            charging: isCharging ?? v.charging,
+            powerCut: isPowerCut ?? v.powerCut,
+            currentDriverId: driverId ?? v.currentDriverId,
           ) else v
       ]);
     }

@@ -1,9 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTrips = exports.assignDriver = exports.updateVehicle = exports.deleteVehicle = exports.getVehicleById = exports.getVehicles = exports.registerVehicle = exports.soundAlarm = exports.setAuthBypass = exports.toggleFingerprintStatus = exports.deleteFingerprint = exports.addFingerprint = exports.getFingerprints = void 0;
+exports.setEmergencyContact = exports.getTrips = exports.assignDriver = exports.updateVehicle = exports.deleteVehicle = exports.getVehicleById = exports.getVehicles = exports.registerVehicle = exports.soundAlarm = exports.setAuthBypass = exports.toggleFingerprintStatus = exports.deleteFingerprint = exports.addFingerprint = exports.getFingerprints = void 0;
 const supabase_1 = require("../config/supabase");
 const mqttService_1 = require("../services/mqttService");
-const socketManager_1 = require("../sockets/socketManager");
 // GET /vehicles/:id/fingerprints
 const getFingerprints = async (req, res) => {
     try {
@@ -90,37 +89,7 @@ const addFingerprint = async (req, res) => {
             return;
         }
         (0, mqttService_1.publishCommand)(vehicle.device_id, 'enrollFingerprint', { driverId: nextSlotId });
-        // Software Fallback Timeout (65 seconds)
-        setTimeout(async () => {
-            try {
-                const { data: profile } = await supabase_1.supabase
-                    .from('fingerprint_profiles')
-                    .select('status')
-                    .eq('vehicle_id', vehicleId)
-                    .eq('slot_id', nextSlotId)
-                    .single();
-                if (profile && profile.status === 'pending') {
-                    console.log(`[Backend Timeout] Slot ${nextSlotId} for vehicle ${vehicleId} is still pending after 65s. Deleting...`);
-                    await supabase_1.supabase
-                        .from('fingerprint_profiles')
-                        .delete()
-                        .eq('vehicle_id', vehicleId)
-                        .eq('slot_id', nextSlotId);
-                    // Notify the frontend
-                    (0, socketManager_1.emitNewAlert)({
-                        id: `timeout-${Date.now()}`,
-                        deviceId: vehicle.device_id,
-                        type: 'system',
-                        message: 'Fingerprint enrollment timeout',
-                        timestamp: new Date().toISOString()
-                    }, ownerId);
-                }
-            }
-            catch (err) {
-                console.error('[Backend Timeout] Error cleaning up pending profile:', err);
-            }
-        }, 65000);
-        res.status(200).json({ message: 'Profile saved and enrollment command sent to vehicle' });
+        res.status(200).json({ message: 'Profile saved and enrollment command sent to vehicle', slotId: nextSlotId });
     }
     catch (err) {
         console.error('[Vehicle] Add fingerprint error:', err);
@@ -221,12 +190,6 @@ const setAuthBypass = async (req, res) => {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
         }
-        // state = true means bypassed (unlocked), so is_engine_locked = false.
-        // state = false means normal (locked), so is_engine_locked = true.
-        await supabase_1.supabase
-            .from('vehicles')
-            .update({ is_engine_locked: !state })
-            .eq('id', vehicleId);
         (0, mqttService_1.publishCommand)(vehicle.device_id, 'setAuthBypass', { state: !!state });
         res.status(200).json({ message: 'Auth bypass command sent to vehicle' });
     }
@@ -544,4 +507,56 @@ const getTrips = async (req, res) => {
     }
 };
 exports.getTrips = getTrips;
+// POST /vehicles/:id/emergency-contact
+const setEmergencyContact = async (req, res) => {
+    try {
+        const ownerId = req.user.id;
+        const vehicleId = req.params.id;
+        let { phoneNumber } = req.body;
+        if (!phoneNumber) {
+            res.status(400).json({ error: 'phoneNumber is required' });
+            return;
+        }
+        // Normalize phone number
+        phoneNumber = phoneNumber.replace(/[^0-9+]/g, '');
+        if (phoneNumber.startsWith('0')) {
+            phoneNumber = '+234' + phoneNumber.substring(1);
+        }
+        else if (!phoneNumber.startsWith('+')) {
+            phoneNumber = '+' + phoneNumber;
+        }
+        if (phoneNumber.length < 7 || phoneNumber.length > 19) {
+            res.status(400).json({ error: 'Invalid phone number format' });
+            return;
+        }
+        // Verify ownership
+        const { data: vehicle } = await supabase_1.supabase
+            .from('vehicles')
+            .select('device_id')
+            .eq('id', vehicleId)
+            .eq('owner_id', ownerId)
+            .single();
+        if (!vehicle) {
+            res.status(404).json({ error: 'Vehicle not found' });
+            return;
+        }
+        // Save to database
+        const { error } = await supabase_1.supabase
+            .from('vehicles')
+            .update({ emergency_contact: phoneNumber })
+            .eq('id', vehicleId);
+        if (error) {
+            res.status(500).json({ error: 'Failed to update emergency contact' });
+            return;
+        }
+        // Publish command
+        (0, mqttService_1.publishCommand)(vehicle.device_id, 'setEmergencyContact', { phone: phoneNumber });
+        res.status(200).json({ message: 'Emergency contact updated successfully', emergencyContact: phoneNumber });
+    }
+    catch (err) {
+        console.error('[Vehicle] Set emergency contact error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.setEmergencyContact = setEmergencyContact;
 //# sourceMappingURL=vehicleController.js.map

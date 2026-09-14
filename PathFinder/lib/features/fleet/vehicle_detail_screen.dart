@@ -29,6 +29,7 @@ class VehicleDetailScreen extends ConsumerStatefulWidget {
 
 class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _isLockCommandPending = false;
 
 
   @override
@@ -58,6 +59,17 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
       (v) => v.vehicleId == widget.vehicle.vehicleId, 
       orElse: () => widget.vehicle
     ) ?? widget.vehicle;
+    
+    final fingerprintsAsync = ref.watch(fingerprintsProvider(widget.vehicle.vehicleId));
+    final fingerprints = fingerprintsAsync.value ?? [];
+    
+    String driverDisplay = 'No Driver';
+    if (vehicle.currentDriverId > 0) {
+      final match = fingerprints.where((f) => f.slotId == vehicle.currentDriverId).firstOrNull;
+      driverDisplay = match?.driverName ?? 'Driver ${vehicle.currentDriverId}';
+    } else if (vehicle.assignedDrivers.isNotEmpty) {
+      driverDisplay = 'Assigned: ${vehicle.assignedDrivers.join(', ')}';
+    }
 
 
     return Scaffold(
@@ -98,7 +110,7 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildLiveTab(context, isDark, user, vehicle),
+          _buildLiveTab(context, isDark, user, vehicle, driverDisplay),
           CameraTab(vehicle: vehicle, isDark: isDark),
           AudioTab(vehicle: vehicle, isDark: isDark),
           EventsTab(vehicle: vehicle, isDark: isDark),
@@ -108,7 +120,7 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
     );
   }
 
-  Widget _buildLiveTab(BuildContext context, bool isDark, dynamic user, VehicleModel vehicle) {
+  Widget _buildLiveTab(BuildContext context, bool isDark, dynamic user, VehicleModel vehicle, String driverDisplay) {
     final lat = vehicle.currentLatitude;
     final lng = vehicle.currentLongitude;
 
@@ -192,17 +204,26 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                                 color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
                               ),
                             ),
-                            if (vehicle.assignedDrivers.isNotEmpty) ...[
+                            if (driverDisplay != 'No Driver') ...[
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  Icon(Icons.person, size: 14, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                                  Icon(
+                                    vehicle.currentDriverId > 0 ? Icons.how_to_reg : Icons.person, 
+                                    size: 14, 
+                                    color: vehicle.currentDriverId > 0 
+                                        ? AppColors.success 
+                                        : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    vehicle.assignedDrivers.join(', '),
+                                    driverDisplay,
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                                      fontWeight: vehicle.currentDriverId > 0 ? FontWeight.bold : FontWeight.normal,
+                                      color: vehicle.currentDriverId > 0 
+                                          ? AppColors.success
+                                          : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
                                     ),
                                   ),
                                 ],
@@ -249,18 +270,55 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                     final isEngineCutOff = vehicle.isEngineLocked;
                     final isFuelCutOff = false; // Mock for now
 
-                    return GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 1.5,
+                    // Battery display: show "Charging" when alternator is running
+                    final batteryDisplay = vehicle.charging 
+                        ? '${batteryVoltage.toStringAsFixed(1)}V (Charging)'
+                        : '${batteryVoltage.toStringAsFixed(1)}V ($batteryPct%)';
+
+                    return Column(
                       children: [
-                        _buildMetricCard('Speed', '${speed.toStringAsFixed(1)} km/h', Icons.speed, isDark),
-                        _buildMetricCard('Battery', '${batteryVoltage.toStringAsFixed(1)}V ($batteryPct%)', Icons.battery_charging_full, isDark),
-                        _buildMetricCard('Engine Temp', '${vehicle.engineTemperature.toStringAsFixed(1)}°C', Icons.thermostat, isDark, isWarning: vehicle.engineTemperature > 105.0),
-                        _buildMetricCard('Engine', vehicle.engineRunning ? 'RUNNING' : 'OFF', Icons.power_settings_new, isDark, isWarning: vehicle.isEngineLocked),
+                        // Power cut warning banner
+                        if (vehicle.powerCut)
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.danger.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.danger.withOpacity(0.5)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.power_off, color: AppColors.danger),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '⚠ Vehicle Power Disconnected — Possible tampering or theft',
+                                    style: TextStyle(
+                                      color: AppColors.danger,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 1.5,
+                          children: [
+                            _buildMetricCard('Speed', '${speed.toStringAsFixed(1)} km/h', Icons.speed, isDark),
+                            _buildMetricCard('Battery', batteryDisplay, vehicle.charging ? Icons.battery_charging_full : Icons.battery_full, isDark, isWarning: vehicle.powerCut),
+                            _buildMetricCard('Engine Temp', vehicle.engineTemperature != null ? '${vehicle.engineTemperature!.toStringAsFixed(1)}°C' : 'N/A', Icons.thermostat, isDark, isWarning: (vehicle.engineTemperature ?? 0) > 105.0),
+                            _buildMetricCard('Engine', vehicle.engineRunning ? 'RUNNING' : 'OFF', Icons.power_settings_new, isDark, isWarning: vehicle.isEngineLocked),
+                          ],
+                        ),
                       ],
                     );
                   }
@@ -281,8 +339,10 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                     if (user.role == UserRole.owner || user.role == UserRole.manager) ...[
                       Expanded(
                         child: CustomButton(
-                          label: vehicle.isEngineLocked ? 'Unlock Engine' : 'Lock Engine',
-                          onPressed: () async {
+                          label: _isLockCommandPending 
+                              ? 'Pending...' 
+                              : (vehicle.isEngineLocked ? 'Unlock Engine' : 'Lock Engine'),
+                          onPressed: _isLockCommandPending ? () {} : () async {
                             if (vehicle.currentStatus == VehicleStatus.offline) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Tracker is offline. Please wait until it comes online.'), backgroundColor: AppColors.warning),
@@ -290,6 +350,9 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                               return;
                             }
                             try {
+                              setState(() {
+                                _isLockCommandPending = true;
+                              });
                               // If it is locked, we send true to bypass. If unlocked, send false to lock.
                               final bypassState = vehicle.isEngineLocked;
                               await ref.read(apiClientProvider).post('/vehicles/${vehicle.vehicleId}/auth-bypass', {
@@ -299,14 +362,27 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Command sent to ${vehicle.vehicleName}'), backgroundColor: AppColors.success),
                               );
-                              ref.invalidate(vehiclesProvider);
+                              // We no longer invalidate the whole provider here since it doesn't optimistically update DB.
+                              // The state will clear itself after 5 seconds to prevent getting stuck if no reply arrives.
+                              Future.delayed(const Duration(seconds: 5), () {
+                                if (mounted) {
+                                  setState(() {
+                                    _isLockCommandPending = false;
+                                  });
+                                }
+                              });
                             } catch (e) {
+                              setState(() {
+                                _isLockCommandPending = false;
+                              });
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Failed to send command'), backgroundColor: AppColors.danger),
                               );
                             }
                           },
-                          color: vehicle.isEngineLocked ? AppColors.success : AppColors.danger,
+                          color: _isLockCommandPending 
+                              ? Colors.grey 
+                              : (vehicle.isEngineLocked ? AppColors.success : AppColors.danger),
                         ),
                       ),
                       const SizedBox(width: 8),

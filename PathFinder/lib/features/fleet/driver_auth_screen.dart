@@ -8,6 +8,7 @@ import '../../core/providers/app_providers.dart';
 import '../../shared/widgets/custom_button.dart';
 import '../../core/services/api_client.dart';
 import '../../core/enums/alert_type.dart';
+import '../../core/providers/socket_provider.dart';
 import 'package:intl/intl.dart';
 
 class DriverAuthScreen extends ConsumerStatefulWidget {
@@ -21,6 +22,7 @@ class DriverAuthScreen extends ConsumerStatefulWidget {
 
 class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
   final ValueNotifier<bool> bypassState = ValueNotifier<bool>(false);
+  bool _isBypassPending = false;
 
   Future<void> _toggleDriver(int slotId, bool isActive) async {
     try {
@@ -40,63 +42,13 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
   }
 
   Future<void> _showAddDriverDialog() async {
-    final nameController = TextEditingController();
-
     await showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Driver'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Driver Name'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final name = nameController.text.trim();
-                if (name.isEmpty) return;
-
-                Navigator.pop(context);
-                _enrollDriver(name);
-              },
-              child: const Text('Add & Enroll'),
-            ),
-          ],
-        );
-      },
+      barrierDismissible: false,
+      builder: (context) => EnrollmentWizardDialog(vehicle: widget.vehicle),
     );
   }
 
-  Future<void> _enrollDriver(String driverName) async {
-    try {
-      final apiClient = ref.read(apiClientProvider);
-      await apiClient.post('/vehicles/${widget.vehicle.vehicleId}/fingerprints', {
-        'driverName': driverName,
-      });
-      ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Enrollment command sent for $driverName! Place finger on sensor.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add driver: $e')),
-        );
-      }
-    }
-  }
 
   Future<void> _deleteDriver(int slotId) async {
     try {
@@ -126,19 +78,43 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
     ref.listen(alertsProvider, (previous, next) {
       if (next.hasValue && next.value != null && next.value!.isNotEmpty) {
         final latestAlert = next.value!.first;
-        if (latestAlert.alertType == AlertType.system) {
-          if (latestAlert.message.contains('Fingerprint enrollment successful') || 
-              latestAlert.message.contains('Fingerprint enrollment timeout')) {
-            ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
-            
-            if (latestAlert.message.contains('timeout') && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Enrollment timed out. No finger was detected.'),
-                  backgroundColor: AppColors.danger,
-                ),
-              );
-            }
+        // Only react to alerts belonging to this vehicle
+        if (latestAlert.vehicleId != widget.vehicle.vehicleId) return;
+
+        if (latestAlert.alertType == AlertType.enrollSuccess) {
+          // Firmware confirmed enrollment — refresh the profile list
+          ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Fingerprint enrolled successfully!'),
+                backgroundColor: AppColors.success,
+              ),
+            );
+          }
+        } else if (latestAlert.alertType == AlertType.enrollFailed) {
+          // Firmware timed out or failed — refresh list (pending row is gone from DB)
+          ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(latestAlert.message.isNotEmpty
+                    ? latestAlert.message
+                    : 'Enrollment failed. No finger detected.'),
+                backgroundColor: AppColors.danger,
+              ),
+            );
+          }
+        } else if (latestAlert.alertType == AlertType.enrollProgress) {
+          // Show step feedback so user knows the sensor is responding
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(latestAlert.message),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.orange,
+              ),
+            );
           }
         }
       }
@@ -181,35 +157,46 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
                         color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
                       ),
                     ),
-                    subtitle: Text(
-                      'If enabled, anyone can start the vehicle without a fingerprint.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-                      ),
-                    ),
                     value: isBypassed,
                     activeColor: AppColors.danger,
-                    onChanged: (val) async {
+                    onChanged: _isBypassPending ? null : (val) async {
                       try {
+                        setState(() { _isBypassPending = true; });
                         final apiClient = ref.read(apiClientProvider);
                         await apiClient.post('/vehicles/${widget.vehicle.vehicleId}/auth-bypass', {
                           'state': val
                         });
-                        bypassState.value = val;
+                        
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(val ? 'Engine lock deactivated!' : 'Engine lock activated!')),
+                            const SnackBar(content: Text('Bypass command sent. Waiting for confirmation...')),
                           );
                         }
+                        
+                        // Clear pending state after 5 seconds to prevent getting stuck
+                        Future.delayed(const Duration(seconds: 5), () {
+                          if (mounted) {
+                            setState(() { _isBypassPending = false; });
+                          }
+                        });
                       } catch (e) {
                         if (mounted) {
+                          setState(() { _isBypassPending = false; });
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Failed to update bypass state: $e')),
                           );
                         }
                       }
                     },
+                    subtitle: _isBypassPending 
+                      ? const Text('Command pending...', style: TextStyle(color: Colors.orange))
+                      : Text(
+                          'If enabled, anyone can start the vehicle without a fingerprint.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          ),
+                        ),
                   );
                 }
               ),
@@ -256,8 +243,8 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
                           children: [
                             Text(profile.driverName, style: const TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(width: 8),
-                            if (isPending)
-                              PendingCountdownBadge(createdAt: profile.createdAt)
+                            if (profile.status == 'pending')
+                              const Text('Pending Enrollment...', style: TextStyle(color: Colors.orange, fontSize: 12))
                             else
                               Row(
                                 children: [
@@ -329,13 +316,13 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
                     String displayMessage = log.message;
                     final profiles = fingerprintsAsync.asData?.value ?? [];
                     
-                    if (isSuccess && displayMessage.contains('Driver ID')) {
-                      final match = RegExp(r'Driver ID (\d+)').firstMatch(displayMessage);
-                      if (match != null) {
-                        final slotId = int.tryParse(match.group(1) ?? '');
-                        final profile = profiles.where((p) => p.slotId == slotId).firstOrNull;
-                        if (profile != null) {
+                    if (log.driverId != null && log.driverId! > 0) {
+                      final profile = profiles.where((p) => p.slotId == log.driverId).firstOrNull;
+                      if (profile != null) {
+                        if (isSuccess) {
                           displayMessage = 'Engine Unlocked by ${profile.driverName}';
+                        } else {
+                          displayMessage = 'Authentication failed for ${profile.driverName}';
                         }
                       }
                     }
@@ -409,76 +396,115 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
   }
 }
 
-class PendingCountdownBadge extends StatefulWidget {
-  final DateTime createdAt;
-
-  const PendingCountdownBadge({Key? key, required this.createdAt}) : super(key: key);
+class EnrollmentWizardDialog extends ConsumerStatefulWidget {
+  final VehicleModel vehicle;
+  const EnrollmentWizardDialog({super.key, required this.vehicle});
 
   @override
-  State<PendingCountdownBadge> createState() => _PendingCountdownBadgeState();
+  ConsumerState<EnrollmentWizardDialog> createState() => _EnrollmentWizardDialogState();
 }
 
-class _PendingCountdownBadgeState extends State<PendingCountdownBadge> {
-  late Timer _timer;
-  int _secondsLeft = 65;
-
-  @override
-  void initState() {
-    super.initState();
-    _updateTimer();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _updateTimer();
-    });
-  }
-
-  void _updateTimer() {
-    final elapsed = DateTime.now().difference(widget.createdAt).inSeconds;
-    final left = 65 - elapsed;
-    if (mounted) {
-      setState(() {
-        _secondsLeft = left > 0 ? left : 0;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
+class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog> {
+  final _nameController = TextEditingController();
+  bool _isEnrolling = false;
+  String _currentStep = '';
+  int? _pendingSlotId;
 
   @override
   Widget build(BuildContext context) {
-    if (_secondsLeft <= 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: AppColors.danger.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text('Timeout', style: TextStyle(color: AppColors.danger, fontSize: 10, fontWeight: FontWeight.bold)),
-      );
-    }
+    ref.listen<AsyncValue<Map<String, dynamic>>>(newAlertProvider, (previous, next) {
+      if (!mounted || !_isEnrolling) return;
+      if (next.hasValue && next.value != null) {
+        final alert = next.value!;
+        if (alert['deviceId'] == widget.vehicle.deviceId) {
+          final type = alert['type'];
+          final message = alert['message'] ?? '';
+          
+          if (type == 'enrollProgress') {
+            setState(() { _currentStep = message; });
+          } else if (type == 'enrollSuccess') {
+            if (mounted) Navigator.pop(context); // Close wizard
+          } else if (type == 'enrollFailed') {
+            setState(() { 
+              _currentStep = 'Enrollment failed: $message';
+              _isEnrolling = false;
+              _pendingSlotId = null;
+            });
+          }
+        }
+      }
+    });
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange),
+    return AlertDialog(
+      title: const Text('Enroll New Driver'),
+      content: _isEnrolling 
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(_currentStep.isEmpty ? 'Initializing...' : _currentStep, textAlign: TextAlign.center),
+            ],
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Driver Name'),
+              ),
+            ],
           ),
-          const SizedBox(width: 4),
-          Text('Pending... ${_secondsLeft}s', style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-        ],
-      ),
+      actions: [
+        if (!_isEnrolling)
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        if (!_isEnrolling)
+          ElevatedButton(
+            onPressed: () async {
+              final name = _nameController.text.trim();
+              if (name.isEmpty) return;
+
+              setState(() { _isEnrolling = true; _currentStep = 'Sending command...'; });
+              
+              try {
+                final apiClient = ref.read(apiClientProvider);
+                final response = await apiClient.post('/vehicles/${widget.vehicle.vehicleId}/fingerprints', {
+                  'driverName': name,
+                });
+                ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
+                
+                if (response is Map<String, dynamic> && response.containsKey('slotId')) {
+                  _pendingSlotId = response['slotId'] as int?;
+                }
+                setState(() { _currentStep = 'Place finger on sensor.'; });
+              } catch (e) {
+                setState(() { _isEnrolling = false; _currentStep = 'Failed: $e'; });
+              }
+            },
+            child: const Text('Start Enrollment'),
+          ),
+        if (_isEnrolling)
+          TextButton(
+            onPressed: () async {
+              if (_pendingSlotId != null) {
+                try {
+                  final apiClient = ref.read(apiClientProvider);
+                  await apiClient.delete('/vehicles/${widget.vehicle.vehicleId}/fingerprints/$_pendingSlotId');
+                  ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
+                } catch (e) {
+                  // Ignore
+                }
+              }
+              if (mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Cancel Enrollment', style: TextStyle(color: Colors.red)),
+          )
+      ],
     );
   }
 }
-

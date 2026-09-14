@@ -67,23 +67,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         final message = alert['message'] ?? 'New Alert Received';
         final type = alert['type'] ?? 'UNKNOWN';
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(type == 'CRASH_DETECTED' || type == 'SOS_BUTTON' ? Icons.warning : Icons.info, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(child: Text(message)),
-              ],
+        final isReAuth = type == 'authSuccess' && message.contains('re-authenticated');
+        final isSilent = type == 'enrollProgress' || type == 'authSilent' || isReAuth;
+        
+        if (!isSilent) {
+          final isCritical = type == 'crash' || type == 'panic' || type == 'sensorFault';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(isCritical ? Icons.warning : Icons.info, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(message)),
+                ],
+              ),
+              backgroundColor: isCritical ? Colors.red : Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
             ),
-            backgroundColor: type == 'CRASH_DETECTED' || type == 'SOS_BUTTON' ? Colors.red : Colors.orange,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+          );
+        }
 
-        // Add the alert to the Alerts list automatically
-        ref.read(alertsProvider.notifier).addAlert(alert);
+        // Add the alert to the Alerts list automatically (enrollProgress is transient but we let it pass through so UI can react, maybe we shouldn't add enrollProgress to the persistent list but for now we do)
+        // Wait, the plan says 'never push — in-session UI only'. If it's only in-session, we can skip adding it to alertsProvider.
+        if (type != 'enrollProgress') {
+          ref.read(alertsProvider.notifier).addAlert(alert);
+        }
 
         // Auto-refresh the vehicles provider if the engine lock status changed
         if (type == 'authSuccess' || type == 'authFailure') {

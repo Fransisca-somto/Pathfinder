@@ -55,8 +55,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
       final isLoggedIn = await authService.loadUser();
 
       if (isLoggedIn) {
+        // IMPORTANT: Update the global state so dashboard doesn't spin forever
+        ref.read(currentUserProvider.notifier).setUser(authService.currentUser);
         // If logged in, go straight to dashboard
-        Navigator.pushReplacementNamed(context, '/dashboard'); // assuming '/dashboard' is the route
+        Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
       } else {
         Navigator.pushReplacementNamed(context, AppRoutes.login);
       }

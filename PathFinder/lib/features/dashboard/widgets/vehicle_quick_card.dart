@@ -7,6 +7,7 @@ import '../../../core/routes/app_routes.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/enums/user_role.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../shared/widgets/custom_button.dart';
 
 class VehicleQuickCard extends ConsumerWidget {
@@ -32,6 +33,17 @@ class VehicleQuickCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final role = ref.watch(authServiceProvider).currentUserRole;
+    
+    final fingerprintsAsync = ref.watch(fingerprintsProvider(vehicle.vehicleId));
+    final fingerprints = fingerprintsAsync.value ?? [];
+    
+    String driverDisplay = 'None';
+    if (vehicle.currentDriverId > 0) {
+      final match = fingerprints.where((f) => f.slotId == vehicle.currentDriverId).firstOrNull;
+      driverDisplay = match?.driverName ?? 'Driver ${vehicle.currentDriverId}';
+    } else if (vehicle.assignedDrivers.isNotEmpty) {
+      driverDisplay = 'Assigned';
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -127,15 +139,17 @@ class VehicleQuickCard extends ConsumerWidget {
                 isDark: isDark,
               ),
               _TelemetryItem(
-                icon: Icons.battery_charging_full,
+                icon: vehicle.charging ? Icons.battery_charging_full : Icons.battery_full,
                 label: 'Battery',
-                value: '${vehicle.batteryVoltage.toStringAsFixed(1)}V (${vehicle.batteryPercentage}%)',
+                value: vehicle.charging 
+                    ? '${vehicle.batteryVoltage.toStringAsFixed(1)}V (Charging)'
+                    : '${vehicle.batteryVoltage.toStringAsFixed(1)}V (${vehicle.batteryPercentage}%)',
                 isDark: isDark,
               ),
               _TelemetryItem(
-                icon: Icons.person,
+                icon: vehicle.currentDriverId > 0 ? Icons.how_to_reg : Icons.person,
                 label: 'Driver',
-                value: vehicle.assignedDrivers.isNotEmpty ? 'Assigned' : 'None',
+                value: driverDisplay,
                 isDark: isDark,
               ),
             ],

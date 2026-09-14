@@ -15,7 +15,16 @@ enum AlertType {
   crash,
   authSuccess,
   theft,
-  temperature
+  temperature,
+  enrollProgress,
+  enrollSuccess,
+  enrollFailed,
+  authDenied,
+  sensorFault,
+  danger,
+  call,
+  authSilent,
+  zoneEnter,
 }
 
 extension AlertTypeExtension on AlertType {
@@ -35,6 +44,15 @@ extension AlertTypeExtension on AlertType {
       case AlertType.authSuccess: return 'Auth Success';
       case AlertType.theft: return 'Theft Attempt';
       case AlertType.temperature: return 'Engine Temp Alert';
+      case AlertType.enrollProgress: return 'Enrollment Progress';
+      case AlertType.enrollSuccess: return 'Enrollment Success';
+      case AlertType.enrollFailed: return 'Enrollment Failed';
+      case AlertType.authDenied: return 'Auth Denied';
+      case AlertType.sensorFault: return 'Sensor Fault';
+      case AlertType.danger: return 'Danger';
+      case AlertType.call: return 'Voice Call';
+      case AlertType.authSilent: return 'Silent Auth';
+      case AlertType.zoneEnter: return 'Zone Enter';
     }
   }
 
@@ -48,6 +66,9 @@ extension AlertTypeExtension on AlertType {
       case AlertType.crash:
       case AlertType.theft:
       case AlertType.temperature:
+      case AlertType.authDenied:
+      case AlertType.danger:
+      case AlertType.sensorFault:
         return AppColors.danger;
       case AlertType.idle:
       case AlertType.maintenance:
@@ -55,9 +76,17 @@ extension AlertTypeExtension on AlertType {
         return AppColors.warning;
       case AlertType.offline:
       case AlertType.system:
+      case AlertType.enrollProgress:
+      case AlertType.authSilent:
         return Colors.grey;
+      case AlertType.call:
+      case AlertType.zoneEnter:
+        return AppColors.info;
       case AlertType.authSuccess:
+      case AlertType.enrollSuccess:
         return AppColors.success;
+      case AlertType.enrollFailed:
+        return AppColors.danger;
     }
   }
 
@@ -77,6 +106,15 @@ extension AlertTypeExtension on AlertType {
       case AlertType.authSuccess: return Icons.verified_user;
       case AlertType.theft: return Icons.security;
       case AlertType.temperature: return Icons.thermostat;
+      case AlertType.enrollProgress: return Icons.fingerprint;
+      case AlertType.enrollSuccess: return Icons.check_circle;
+      case AlertType.enrollFailed: return Icons.cancel;
+      case AlertType.authDenied: return Icons.block;
+      case AlertType.sensorFault: return Icons.warning;
+      case AlertType.danger: return Icons.gavel; // Or something
+      case AlertType.call: return Icons.phone;
+      case AlertType.authSilent: return Icons.fingerprint;
+      case AlertType.zoneEnter: return Icons.login;
     }
   }
 }

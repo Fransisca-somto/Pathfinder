@@ -21,6 +21,7 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
   late TextEditingController _nameController;
   late TextEditingController _plateController;
   TextEditingController? _driversController;
+  late TextEditingController _emergencyContactController;
   late String _selectedType;
   late String _updateInterval;
   late String _connectionMode;
@@ -35,6 +36,7 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
     _nameController = TextEditingController(text: widget.vehicle.vehicleName);
     _plateController = TextEditingController(text: widget.vehicle.plateNumber);
     _driversController = TextEditingController(text: widget.vehicle.assignedDrivers.join(', '));
+    _emergencyContactController = TextEditingController(text: widget.vehicle.emergencyContact ?? '');
     _selectedType = _vehicleTypes.contains(widget.vehicle.vehicleType) ? widget.vehicle.vehicleType : _vehicleTypes.first;
     _updateInterval = _updateIntervals.contains(widget.vehicle.updateInterval) ? widget.vehicle.updateInterval : '5s';
     _connectionMode = _connectionModes.contains(widget.vehicle.connectionMode) ? widget.vehicle.connectionMode : 'GPRS';
@@ -45,6 +47,7 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
     _nameController.dispose();
     _plateController.dispose();
     _driversController?.dispose();
+    _emergencyContactController.dispose();
     super.dispose();
   }
 
@@ -57,6 +60,7 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
         vehicleType: _selectedType,
         updateInterval: _updateInterval,
         connectionMode: _connectionMode,
+        emergencyContact: _emergencyContactController.text.trim(),
       );
 
       try {
@@ -68,6 +72,15 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
           if (email.contains('@')) { // Basic email check
             await ref.read(vehiclesProvider.notifier).assignDriver(widget.vehicle.vehicleId, email);
           }
+        }
+
+        // Update emergency contact if changed
+        final newContact = _emergencyContactController.text.trim();
+        if (newContact != (widget.vehicle.emergencyContact ?? '')) {
+          final apiClient = ref.read(apiClientProvider);
+          await apiClient.post('/vehicles/${widget.vehicle.vehicleId}/emergency-contact', {
+            'phoneNumber': newContact,
+          });
         }
 
         if (!mounted) return;
@@ -161,6 +174,16 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
                 label: 'Plate Number',
                 icon: Icons.pin,
                 isDark: isDark,
+              ),
+              const SizedBox(height: 16),
+              
+              // Emergency Contact Field
+              _buildTextField(
+                controller: _emergencyContactController,
+                label: 'Emergency Contact (e.g. +23480...)',
+                icon: Icons.phone,
+                isDark: isDark,
+                keyboardType: TextInputType.phone,
               ),
               const SizedBox(height: 16),
               
@@ -269,13 +292,15 @@ class _VehicleSettingsScreenState extends ConsumerState<VehicleSettingsScreen> {
     required IconData icon,
     required bool isDark,
     bool readOnly = false,
+    TextInputType? keyboardType,
   }) {
     return TextFormField(
       controller: controller,
       readOnly: readOnly,
+      keyboardType: keyboardType,
       style: TextStyle(
         color: readOnly 
-            ? (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight) 
+            ? (isDark ? Colors.grey[600] : Colors.grey[400]) 
             : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
       ),
       decoration: InputDecoration(

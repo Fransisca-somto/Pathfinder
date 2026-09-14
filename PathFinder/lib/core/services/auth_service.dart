@@ -88,9 +88,17 @@ class AuthService {
   Future<bool> loadUser() async {
     final token = await _storage.read(key: 'jwt_token');
     if (token != null) {
-      // In a real app, you might hit a /auth/me endpoint here to get full details.
-      // For now, we return true if we have a token.
-      return true;
+      try {
+        final response = await _apiClient.get('/auth/me');
+        if (response != null && response['user'] != null) {
+          _currentUser = UserModel.fromJson(response['user']);
+          return true;
+        }
+      } catch (e) {
+        print('Error loading user profile: $e');
+        // Token might be expired, clear it
+        await logout();
+      }
     }
     return false;
   }

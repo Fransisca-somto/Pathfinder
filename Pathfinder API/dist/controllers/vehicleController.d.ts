@@ -12,4 +12,5 @@ export declare const deleteVehicle: (req: Request, res: Response) => Promise<voi
 export declare const updateVehicle: (req: Request, res: Response) => Promise<void>;
 export declare const assignDriver: (req: Request, res: Response) => Promise<void>;
 export declare const getTrips: (req: Request, res: Response) => Promise<void>;
+export declare const setEmergencyContact: (req: Request, res: Response) => Promise<void>;
 //# sourceMappingURL=vehicleController.d.ts.map

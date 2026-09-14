@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/providers/app_providers.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/routes/app_routes.dart';
@@ -40,13 +41,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _isLoading = false);
       
       if (success) {
+        // IMPORTANT: Update the global state so dashboard can display the user
+        ref.read(currentUserProvider.notifier).setUser(authService.currentUser);
+
         if (_selectedRole == 'Owner') {
-          Navigator.pushReplacementNamed(context, AppRoutes.setupWizard);
+          Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Registration successful! Please wait for owner approval.')),
           );
-          Navigator.pop(context);
+          // If they aren't owner, still take them to dashboard, but their permissions might be limited
+          Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

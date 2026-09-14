@@ -10,6 +10,7 @@ class AlertModel {
   final bool isRead;
   final bool requiresAction;
   final String actionType;
+  final int? driverId;
 
   const AlertModel({
     required this.alertId,
@@ -21,6 +22,7 @@ class AlertModel {
     this.isRead = false,
     this.requiresAction = false,
     this.actionType = '',
+    this.driverId,
   });
 
   AlertModel copyWith({
@@ -33,6 +35,7 @@ class AlertModel {
     bool? isRead,
     bool? requiresAction,
     String? actionType,
+    int? driverId,
   }) {
     return AlertModel(
       alertId: alertId ?? this.alertId,
@@ -44,6 +47,7 @@ class AlertModel {
       isRead: isRead ?? this.isRead,
       requiresAction: requiresAction ?? this.requiresAction,
       actionType: actionType ?? this.actionType,
+      driverId: driverId ?? this.driverId,
     );
   }
 
@@ -61,6 +65,7 @@ class AlertModel {
       isRead: json['is_read'] ?? false,
       requiresAction: json['requires_action'] ?? false,
       actionType: json['action_type'] ?? '', 
+      driverId: json['driver_id'] ?? json['driverId'],
     );
   }
 }
