@@ -409,6 +409,32 @@ class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog>
   bool _isEnrolling = false;
   String _currentStep = '';
   int? _pendingSlotId;
+  Timer? _enrollmentTimeout;
+
+  @override
+  void dispose() {
+    _enrollmentTimeout?.cancel();
+    super.dispose();
+  }
+
+  void _startTimeout() {
+    _enrollmentTimeout?.cancel();
+    _enrollmentTimeout = Timer(const Duration(seconds: 10), () {
+      if (mounted && _isEnrolling) {
+        setState(() {
+          _currentStep = 'Device did not respond. Check connection.';
+          _isEnrolling = false;
+        });
+        if (_pendingSlotId != null) {
+          try {
+            final apiClient = ref.read(apiClientProvider);
+            apiClient.delete('/vehicles/${widget.vehicle.vehicleId}/fingerprints/$_pendingSlotId');
+            ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
+          } catch (e) {}
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -420,11 +446,17 @@ class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog>
           final type = alert['type'];
           final message = alert['message'] ?? '';
           
-          if (type == 'enrollProgress') {
+          if (type == 'commandAck') {
+            _enrollmentTimeout?.cancel();
+            setState(() { _currentStep = 'Command acknowledged. Waiting for sensor...'; });
+          } else if (type == 'enrollProgress') {
+            _enrollmentTimeout?.cancel();
             setState(() { _currentStep = message; });
           } else if (type == 'enrollSuccess') {
+            _enrollmentTimeout?.cancel();
             if (mounted) Navigator.pop(context); // Close wizard
           } else if (type == 'enrollFailed') {
+            _enrollmentTimeout?.cancel();
             setState(() { 
               _currentStep = 'Enrollment failed: $message';
               _isEnrolling = false;
@@ -479,7 +511,8 @@ class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog>
                 if (response is Map<String, dynamic> && response.containsKey('slotId')) {
                   _pendingSlotId = response['slotId'] as int?;
                 }
-                setState(() { _currentStep = 'Place finger on sensor.'; });
+                setState(() { _currentStep = 'Waiting for device acknowledgement...'; });
+                _startTimeout();
               } catch (e) {
                 setState(() { _isEnrolling = false; _currentStep = 'Failed: $e'; });
               }

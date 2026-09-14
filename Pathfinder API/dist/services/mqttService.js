@@ -19,6 +19,10 @@ const deviceOwnerCache = new Map();
 const deviceStatusCache = new Map();
 // Keep track of timeouts for each device to mark them offline after 2 minutes of silence
 const deviceTimeouts = new Map();
+// Track last telemetry time to override stale LWT messages
+const lastTelemetryTimes = new Map();
+// Track when a device started moving to prevent jitter-based phantom trips
+const deviceMovingSince = new Map();
 // Keep track of overspeeding alerts to prevent spam (1 minute cooldown)
 const lastOverspeedAlerts = new Map();
 const OVERSPEED_THRESHOLD_KMPH = 80;
@@ -79,7 +83,7 @@ const publishCommand = (deviceId, command, payload = {}) => {
     }
     const topic = 'pathfinder/commands';
     const message = JSON.stringify({
-        deviceId,
+        deviceId: deviceId.toLowerCase(),
         command,
         payload
     });
@@ -150,6 +154,11 @@ const handleStatus = async (data) => {
     if (!ownerId)
         return;
     if (data.status === 'offline') {
+        const lastTime = lastTelemetryTimes.get(deviceId) || 0;
+        if (Date.now() - lastTime < 30000) {
+            console.log(`[MQTT] Ignoring stale offline status for ${deviceId}, telemetry received recently`);
+            return;
+        }
         await markDeviceOffline(deviceId, ownerId);
     }
     else if (data.status === 'online') {
@@ -166,6 +175,19 @@ const handleTelemetry = async (data) => {
     if (!deviceId) {
         return;
     }
+    lastTelemetryTimes.set(deviceId, Date.now());
+    // --- TELEMETRY VALIDATION ---
+    if (data.satellites !== undefined && data.satellites > 32) {
+        console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Impossible satellite count (${data.satellites})`);
+        return;
+    }
+    if (data.lat !== undefined && data.lng !== undefined) {
+        if (Math.abs(data.lat) < 1.0 && Math.abs(data.lng) < 1.0) {
+            console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Coordinates near Null Island (${data.lat}, ${data.lng})`);
+            return;
+        }
+    }
+    // ----------------------------
     // Look up who owns this device
     const ownerId = await getDeviceOwner(deviceId);
     // Get vehicle_id for trips
@@ -224,15 +246,31 @@ const handleTelemetry = async (data) => {
     if (vehicleId && data.lat && data.lng) {
         const prevStatus = deviceStatusCache.get(deviceId) || 'parked';
         if (prevStatus !== 'moving' && finalStatus === 'moving') {
-            await (0, tripService_1.startTrip)(vehicleId, data.lat, data.lng);
+            const movingSince = deviceMovingSince.get(deviceId) || Date.now();
+            deviceMovingSince.set(deviceId, movingSince);
+            if (Date.now() - movingSince >= 10000) { // 10s hysteresis
+                await (0, tripService_1.startTrip)(vehicleId, data.lat, data.lng);
+                deviceMovingSince.delete(deviceId);
+                deviceStatusCache.set(deviceId, 'moving');
+            }
+            else {
+                // Keep as parked internally until hysteresis passes
+                deviceStatusCache.set(deviceId, prevStatus);
+            }
         }
         else if (prevStatus === 'moving' && (finalStatus === 'parked' || finalStatus === 'offline')) {
             await (0, tripService_1.endTrip)(vehicleId, data.lat, data.lng);
+            deviceMovingSince.delete(deviceId);
+            deviceStatusCache.set(deviceId, finalStatus);
         }
-        else if (finalStatus === 'moving') {
+        else if (prevStatus === 'moving' && finalStatus === 'moving') {
             (0, tripService_1.appendTripCoordinate)(vehicleId, data.lat, data.lng);
+            deviceStatusCache.set(deviceId, finalStatus);
         }
-        deviceStatusCache.set(deviceId, finalStatus);
+        else {
+            deviceMovingSince.delete(deviceId);
+            deviceStatusCache.set(deviceId, finalStatus);
+        }
         // Evaluate against assigned zones
         await (0, zoneService_1.processVehicleLocation)(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
     }
@@ -363,6 +401,9 @@ const triggerAlert = async (data) => {
                 .from('vehicles')
                 .update({ is_engine_locked: true })
                 .eq('id', vehicle.id);
+        }
+        else if (data.type === 'commandAck') {
+            console.log(`[MQTT] Command acknowledged by vehicle ${vehicle.id}: ${data.message}`);
         }
         else if (data.type === 'system') {
             if (data.message?.includes('rejected') || data.message?.includes('Rejected')) {

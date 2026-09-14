@@ -25,6 +25,7 @@ enum AlertType {
   call,
   authSilent,
   zoneEnter,
+  commandAck,
 }
 
 extension AlertTypeExtension on AlertType {
@@ -53,6 +54,7 @@ extension AlertTypeExtension on AlertType {
       case AlertType.call: return 'Voice Call';
       case AlertType.authSilent: return 'Silent Auth';
       case AlertType.zoneEnter: return 'Zone Enter';
+      case AlertType.commandAck: return 'Command Ack';
     }
   }
 
@@ -81,6 +83,7 @@ extension AlertTypeExtension on AlertType {
         return Colors.grey;
       case AlertType.call:
       case AlertType.zoneEnter:
+      case AlertType.commandAck:
         return AppColors.info;
       case AlertType.authSuccess:
       case AlertType.enrollSuccess:
@@ -115,6 +118,7 @@ extension AlertTypeExtension on AlertType {
       case AlertType.call: return Icons.phone;
       case AlertType.authSilent: return Icons.fingerprint;
       case AlertType.zoneEnter: return Icons.login;
+      case AlertType.commandAck: return Icons.check;
     }
   }
 }

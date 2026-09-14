@@ -6,11 +6,15 @@ export const getAlerts = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
 
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+
     const { data, error } = await supabase
       .from('alerts')
       .select('*, vehicle:vehicles(name, plate_number)')
       .eq('owner_id', ownerId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('[Alert] Fetch error:', error);
