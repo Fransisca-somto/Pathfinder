@@ -15,6 +15,7 @@ class VehicleModel {
   final List<String> safeZones;
   final String lastKnownLocation;
   final bool isEngineLocked;
+  final bool isAlarmActive;
   final String updateInterval;
   final String deviceId;
   final String connectionMode;
@@ -27,6 +28,8 @@ class VehicleModel {
   final bool powerCut;
   final int currentDriverId;
   final String? emergencyContact;
+  final bool gpsFix;
+  final int fixAgeS;
 
   const VehicleModel({
     required this.vehicleId,
@@ -43,6 +46,7 @@ class VehicleModel {
     this.safeZones = const [],
     required this.lastKnownLocation,
     this.isEngineLocked = false,
+    this.isAlarmActive = false,
     this.updateInterval = '5s',
     required this.deviceId,
     this.connectionMode = 'GPRS',
@@ -55,6 +59,8 @@ class VehicleModel {
     this.powerCut = false,
     this.currentDriverId = -1,
     this.emergencyContact,
+    this.gpsFix = true,
+    this.fixAgeS = 0,
   }) : _batteryPercentage = batteryPercentage;
 
   int get batteryPercentage {
@@ -79,6 +85,7 @@ class VehicleModel {
     List<String>? safeZones,
     String? lastKnownLocation,
     bool? isEngineLocked,
+    bool? isAlarmActive,
     String? updateInterval,
     String? deviceId,
     String? connectionMode,
@@ -91,6 +98,8 @@ class VehicleModel {
     bool? powerCut,
     int? currentDriverId,
     String? emergencyContact,
+    bool? gpsFix,
+    int? fixAgeS,
   }) {
     return VehicleModel(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -107,6 +116,7 @@ class VehicleModel {
       safeZones: safeZones ?? this.safeZones,
       lastKnownLocation: lastKnownLocation ?? this.lastKnownLocation,
       isEngineLocked: isEngineLocked ?? this.isEngineLocked,
+      isAlarmActive: isAlarmActive ?? this.isAlarmActive,
       updateInterval: updateInterval ?? this.updateInterval,
       deviceId: deviceId ?? this.deviceId,
       connectionMode: connectionMode ?? this.connectionMode,
@@ -119,6 +129,8 @@ class VehicleModel {
       powerCut: powerCut ?? this.powerCut,
       currentDriverId: currentDriverId ?? this.currentDriverId,
       emergencyContact: emergencyContact ?? this.emergencyContact,
+      gpsFix: gpsFix ?? this.gpsFix,
+      fixAgeS: fixAgeS ?? this.fixAgeS,
     );
   }
 
@@ -150,6 +162,7 @@ class VehicleModel {
       safeZones: json['safeZones'] != null ? List<String>.from(json['safeZones']) : [],
       lastKnownLocation: json['last_known_location'] ?? json['lastKnownLocation'] ?? 'Unknown',
       isEngineLocked: json['is_engine_locked'] ?? json['isEngineLocked'] ?? false,
+      isAlarmActive: json['is_alarm_active'] ?? json['isAlarmActive'] ?? false,
       updateInterval: json['updateInterval'] ?? '5s',
       deviceId: json['device_id'] ?? json['deviceImei'] ?? json['deviceId'] ?? '',
       connectionMode: json['connectionMode'] ?? 'GPRS',
@@ -162,6 +175,8 @@ class VehicleModel {
       powerCut: json['power_cut'] ?? false,
       currentDriverId: json['current_driver_id'] ?? -1,
       emergencyContact: json['emergency_contact'] ?? json['emergencyContact'],
+      gpsFix: json['gps_fix'] ?? true,
+      fixAgeS: json['fix_age_s'] ?? 0,
     );
   }
 }

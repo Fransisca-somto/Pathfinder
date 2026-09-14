@@ -190,7 +190,13 @@ const setAuthBypass = async (req, res) => {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
         }
-        (0, mqttService_1.publishCommand)(vehicle.device_id, 'setAuthBypass', { state: !!state });
+        const isBypassOn = !!state;
+        // When bypass is ON, engine is unlocked. When OFF, engine is locked.
+        await supabase_1.supabase
+            .from('vehicles')
+            .update({ is_engine_locked: !isBypassOn })
+            .eq('id', vehicleId);
+        (0, mqttService_1.publishCommand)(vehicle.device_id, 'setAuthBypass', { state: isBypassOn });
         res.status(200).json({ message: 'Auth bypass command sent to vehicle' });
     }
     catch (err) {
@@ -215,7 +221,12 @@ const soundAlarm = async (req, res) => {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
         }
-        (0, mqttService_1.publishCommand)(vehicle.device_id, 'soundAlarm', { state: !!state });
+        const isAlarmOn = !!state;
+        await supabase_1.supabase
+            .from('vehicles')
+            .update({ is_alarm_active: isAlarmOn })
+            .eq('id', vehicleId);
+        (0, mqttService_1.publishCommand)(vehicle.device_id, 'soundAlarm', { state: isAlarmOn });
         res.status(200).json({ message: 'Alarm command sent to vehicle' });
     }
     catch (err) {

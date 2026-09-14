@@ -21,8 +21,14 @@ class DriverAuthScreen extends ConsumerStatefulWidget {
 }
 
 class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
-  final ValueNotifier<bool> bypassState = ValueNotifier<bool>(false);
+  late final ValueNotifier<bool> bypassState;
   bool _isBypassPending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    bypassState = ValueNotifier<bool>(!widget.vehicle.isEngineLocked);
+  }
 
   Future<void> _toggleDriver(int slotId, bool isActive) async {
     try {
@@ -168,6 +174,7 @@ class _DriverAuthScreenState extends ConsumerState<DriverAuthScreen> {
                         });
                         
                         if (mounted) {
+                          bypassState.value = val;
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Bypass command sent. Waiting for confirmation...')),
                           );
@@ -419,7 +426,7 @@ class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog>
 
   void _startTimeout() {
     _enrollmentTimeout?.cancel();
-    _enrollmentTimeout = Timer(const Duration(seconds: 10), () {
+    _enrollmentTimeout = Timer(const Duration(seconds: 10), () async {
       if (mounted && _isEnrolling) {
         setState(() {
           _currentStep = 'Device did not respond. Check connection.';
@@ -428,7 +435,17 @@ class _EnrollmentWizardDialogState extends ConsumerState<EnrollmentWizardDialog>
         if (_pendingSlotId != null) {
           try {
             final apiClient = ref.read(apiClientProvider);
-            apiClient.delete('/vehicles/${widget.vehicle.vehicleId}/fingerprints/$_pendingSlotId');
+            // Check current state before cleaning up to avoid deleting a successful enrollment
+            final response = await apiClient.get('/vehicles/${widget.vehicle.vehicleId}/fingerprints');
+            if (response is List) {
+              final profile = response.firstWhere(
+                (p) => p['slot_id'] == _pendingSlotId || p['slotId'] == _pendingSlotId, 
+                orElse: () => null
+              );
+              if (profile != null && profile['status'] == 'pending') {
+                await apiClient.delete('/vehicles/${widget.vehicle.vehicleId}/fingerprints/$_pendingSlotId');
+              }
+            }
             ref.invalidate(fingerprintsProvider(widget.vehicle.vehicleId));
           } catch (e) {}
         }

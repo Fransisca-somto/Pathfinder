@@ -26,6 +26,9 @@ const lastTelemetryTimes: Map<string, number> = new Map();
 // Track when a device started moving to prevent jitter-based phantom trips
 const deviceMovingSince: Map<string, number> = new Map();
 
+// Track when a moving device lost its GPS fix (for the 5-minute pause before ending trip)
+const deviceNoFixSince: Map<string, number> = new Map();
+
 
 
 // Keep track of overspeeding alerts to prevent spam (1 minute cooldown)
@@ -215,14 +218,17 @@ const handleTelemetry = async (data: any) => {
   lastTelemetryTimes.set(deviceId, Date.now());
 
   // --- TELEMETRY VALIDATION ---
-  if (data.satellites !== undefined && data.satellites > 32) {
-    console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Impossible satellite count (${data.satellites})`);
-    return;
-  }
-  if (data.lat !== undefined && data.lng !== undefined) {
-    if (Math.abs(data.lat) < 1.0 && Math.abs(data.lng) < 1.0) {
-      console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Coordinates near Null Island (${data.lat}, ${data.lng})`);
+  const hasGpsFix = data.gps_fix !== false;
+  if (hasGpsFix) {
+    if (data.satellites !== undefined && data.satellites > 32) {
+      console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Impossible satellite count (${data.satellites})`);
       return;
+    }
+    if (data.lat !== undefined && data.lng !== undefined && data.lat !== null && data.lng !== null) {
+      if (Math.abs(data.lat) < 1.0 && Math.abs(data.lng) < 1.0) {
+        console.warn(`[MQTT] Rejecting telemetry for ${deviceId}: Coordinates near Null Island (${data.lat}, ${data.lng})`);
+        return;
+      }
     }
   }
   // ----------------------------
@@ -244,10 +250,18 @@ const handleTelemetry = async (data: any) => {
   }
 
   const updatePayload: any = {};
-  if (data.lat !== undefined && data.lng !== undefined) {
+  updatePayload.gps_fix = hasGpsFix;
+  updatePayload.fix_age_s = data.fix_age_s ?? 0;
+
+  if (hasGpsFix && data.lat !== undefined && data.lng !== undefined && data.lat !== null && data.lng !== null) {
     updatePayload.current_latitude = data.lat;
     updatePayload.current_longitude = data.lng;
     updatePayload.last_known_location = `${data.lat}, ${data.lng}`;
+  } else if (!hasGpsFix && data.last_lat !== undefined && data.last_lng !== undefined && data.last_lat !== null && data.last_lng !== null) {
+    // Keep the most recent known position without overwriting with null
+    updatePayload.current_latitude = data.last_lat;
+    updatePayload.current_longitude = data.last_lng;
+    updatePayload.last_known_location = `${data.last_lat}, ${data.last_lng}`;
   }
   if (data.speed !== undefined) {
     updatePayload.current_speed = data.speed;
@@ -270,13 +284,11 @@ const handleTelemetry = async (data: any) => {
   
   // Determine status
   let finalStatus = 'parked';
-  if (data.status) {
-    // If 'online' is sent without speed, it implies parked, but we can pass 'online' to DB or let it be.
-    // The DB enum is 'moving', 'parked', 'offline', 'alarm'. So 'online' is best mapped to 'parked' or ignored if lat/lng is missing.
-    // Let's just use what they passed, unless it's 'online' which we map to 'parked'.
-    finalStatus = data.status === 'online' ? 'parked' : data.status;
+  if (data.status && data.status !== 'online') {
+    finalStatus = data.status;
   } else if (data.speed !== undefined) {
-    finalStatus = data.speed > 0 ? 'moving' : 'parked';
+    // 10 km/h threshold for moving
+    finalStatus = data.speed > 10 ? 'moving' : 'parked';
   }
   updatePayload.status = finalStatus;
 
@@ -287,43 +299,66 @@ const handleTelemetry = async (data: any) => {
     .ilike('device_id', deviceId);
 
   // --- TRIP TRACKING LOGIC ---
-  if (vehicleId && data.lat && data.lng) {
+  if (vehicleId) {
     const prevStatus = deviceStatusCache.get(deviceId) || 'parked';
     
-    if (prevStatus !== 'moving' && finalStatus === 'moving') {
-      const movingSince = deviceMovingSince.get(deviceId) || Date.now();
-      deviceMovingSince.set(deviceId, movingSince);
+    // Only use coordinates if we have a fix. Otherwise, we can't record the path.
+    const hasValidCoords = hasGpsFix && data.lat !== undefined && data.lng !== undefined && data.lat !== null && data.lng !== null;
+
+    if (!hasGpsFix && prevStatus === 'moving') {
+      // Pause trip logic: Track how long we've been without a fix
+      const noFixSince = deviceNoFixSince.get(deviceId) || Date.now();
+      deviceNoFixSince.set(deviceId, noFixSince);
       
-      if (Date.now() - movingSince >= 10000) { // 10s hysteresis
-        await startTrip(vehicleId, data.lat, data.lng);
+      if (Date.now() - noFixSince >= 300000) { // 5 minutes (300,000 ms)
+        console.log(`[MQTT] Device ${deviceId} no fix for 5 minutes. Ending trip.`);
+        await endTrip(vehicleId, data.last_lat ?? updatePayload.current_latitude, data.last_lng ?? updatePayload.current_longitude);
+        deviceNoFixSince.delete(deviceId);
         deviceMovingSince.delete(deviceId);
-        deviceStatusCache.set(deviceId, 'moving');
-      } else {
-        // Keep as parked internally until hysteresis passes
-        deviceStatusCache.set(deviceId, prevStatus);
+        deviceStatusCache.set(deviceId, 'parked');
       }
-    } else if (prevStatus === 'moving' && (finalStatus === 'parked' || finalStatus === 'offline')) {
-      await endTrip(vehicleId, data.lat, data.lng);
-      deviceMovingSince.delete(deviceId);
-      deviceStatusCache.set(deviceId, finalStatus);
-    } else if (prevStatus === 'moving' && finalStatus === 'moving') {
-      appendTripCoordinate(vehicleId, data.lat, data.lng);
-      deviceStatusCache.set(deviceId, finalStatus);
+      // If < 5 mins, do nothing (keep it 'moving' conceptually but don't append points)
     } else {
-      deviceMovingSince.delete(deviceId);
-      deviceStatusCache.set(deviceId, finalStatus);
+      // We have a fix (or were already parked) - clear the no-fix timer
+      deviceNoFixSince.delete(deviceId);
+
+      if (prevStatus !== 'moving' && finalStatus === 'moving' && hasValidCoords) {
+        const movingSince = deviceMovingSince.get(deviceId) || Date.now();
+        deviceMovingSince.set(deviceId, movingSince);
+        
+        if (Date.now() - movingSince >= 10000) { // 10s hysteresis
+          await startTrip(vehicleId, data.lat, data.lng);
+          deviceMovingSince.delete(deviceId);
+          deviceStatusCache.set(deviceId, 'moving');
+        } else {
+          // Keep as parked internally until hysteresis passes
+          deviceStatusCache.set(deviceId, prevStatus);
+        }
+      } else if (prevStatus === 'moving' && (finalStatus === 'parked' || finalStatus === 'offline')) {
+        await endTrip(vehicleId, data.lat ?? updatePayload.current_latitude, data.lng ?? updatePayload.current_longitude);
+        deviceMovingSince.delete(deviceId);
+        deviceStatusCache.set(deviceId, finalStatus);
+      } else if (prevStatus === 'moving' && finalStatus === 'moving' && hasValidCoords) {
+        appendTripCoordinate(vehicleId, data.lat, data.lng);
+        deviceStatusCache.set(deviceId, finalStatus);
+      } else {
+        deviceMovingSince.delete(deviceId);
+        deviceStatusCache.set(deviceId, finalStatus);
+      }
     }
 
-    // Evaluate against assigned zones
-    await processVehicleLocation(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
+    // Evaluate against assigned zones (only if we have a real fix)
+    if (hasValidCoords) {
+      await processVehicleLocation(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
+    }
   }
   // ---------------------------
 
   // Build the telemetry payload
   const telemetryPayload = {
     deviceId: deviceId,
-    lat: data.lat,
-    lng: data.lng,
+    lat: data.lat ?? data.last_lat,
+    lng: data.lng ?? data.last_lng,
     speed: data.speed,
     acc: data.acc,
     battery: data.battery,
@@ -333,6 +368,8 @@ const handleTelemetry = async (data: any) => {
     driverId: data.driverId ?? -1,
     temperature: data.temperature,
     status: finalStatus,
+    gps_fix: hasGpsFix,
+    fix_age_s: data.fix_age_s ?? 0,
     timestamp: new Date().toISOString(),
   };
 

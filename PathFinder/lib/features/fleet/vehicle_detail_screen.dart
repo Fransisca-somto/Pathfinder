@@ -131,31 +131,54 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
           // Mini Map Header
           SizedBox(
             height: 200,
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: LatLng(lat, lng),
-                initialZoom: 15.0,
-                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-              ),
+            child: Stack(
               children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.pathfinder.app',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: LatLng(lat, lng),
-                      width: 40,
-                      height: 40,
-                      child: const Icon(
-                        Icons.directions_car,
-                        size: 32,
-                        color: Colors.blue,
-                      ),
+                FlutterMap(
+                  options: MapOptions(
+                    initialCenter: LatLng(lat, lng),
+                    initialZoom: 15.0,
+                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.pathfinder.app',
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(lat, lng),
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            Icons.directions_car,
+                            size: 32,
+                            color: vehicle.gpsFix ? Colors.blue : Colors.grey,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+                if (!vehicle.gpsFix)
+                  Container(
+                    color: Colors.black.withOpacity(0.4),
+                    alignment: Alignment.center,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'No GPS Fix — Last seen ${vehicle.fixAgeS ~/ 60} minutes ago',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -362,8 +385,10 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Command sent to ${vehicle.vehicleName}'), backgroundColor: AppColors.success),
                               );
-                              // We no longer invalidate the whole provider here since it doesn't optimistically update DB.
-                              // The state will clear itself after 5 seconds to prevent getting stuck if no reply arrives.
+                              
+                              // Invalidate to fetch the updated DB state
+                              ref.invalidate(vehiclesProvider);
+                              
                               Future.delayed(const Duration(seconds: 5), () {
                                 if (mounted) {
                                   setState(() {
@@ -388,8 +413,8 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                       const SizedBox(width: 8),
                       Expanded(
                         child: CustomButton(
-                          label: 'Sound Alarm',
-                          icon: Icons.notifications_active,
+                          label: vehicle.isAlarmActive ? 'Turn Off Alarm' : 'Sound Alarm',
+                          icon: vehicle.isAlarmActive ? Icons.notifications_off : Icons.notifications_active,
                           onPressed: () async {
                             if (vehicle.currentStatus == VehicleStatus.offline) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -398,20 +423,24 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                               return;
                             }
                             try {
+                              final newState = !vehicle.isAlarmActive;
                               await ref.read(apiClientProvider).post('/vehicles/${vehicle.vehicleId}/alarm', {
-                                'state': true // Turn alarm ON
+                                'state': newState
                               });
                               
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Alarm triggered for ${vehicle.vehicleName}'), backgroundColor: AppColors.warning),
+                                SnackBar(content: Text(newState ? 'Alarm triggered for ${vehicle.vehicleName}' : 'Alarm turned off for ${vehicle.vehicleName}'), backgroundColor: AppColors.warning),
                               );
+                              
+                              // Invalidate to fetch the updated DB state
+                              ref.invalidate(vehiclesProvider);
                             } catch (e) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to trigger alarm'), backgroundColor: AppColors.danger),
+                                SnackBar(content: Text('Failed to toggle alarm'), backgroundColor: AppColors.danger),
                               );
                             }
                           },
-                          color: AppColors.warning,
+                          color: vehicle.isAlarmActive ? Colors.grey : AppColors.warning,
                         ),
                       ),
                     ] else ...[
