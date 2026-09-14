@@ -184,11 +184,24 @@ const handleStatus = async (data: any) => {
     }
     await markDeviceOffline(deviceId, ownerId);
   } else if (data.status === 'online') {
-    console.log(`[MQTT] Device ${deviceId} reported online. Waiting for telemetry...`);
+    console.log(`[MQTT] Device ${deviceId} reported online. Marking as parked.`);
     if (deviceTimeouts.has(deviceId)) {
       clearTimeout(deviceTimeouts.get(deviceId)!);
       deviceTimeouts.delete(deviceId);
     }
+    
+    // Immediately persist online (parked) status
+    await supabase
+      .from('vehicles')
+      .update({ status: 'parked' })
+      .ilike('device_id', deviceId);
+
+    // Notify Flutter App
+    emitLiveTelemetry({
+      deviceId: deviceId,
+      status: 'parked',
+      timestamp: new Date().toISOString(),
+    }, ownerId);
   }
 };
 
