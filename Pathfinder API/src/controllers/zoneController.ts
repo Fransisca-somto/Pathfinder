@@ -88,7 +88,7 @@ export const createZone = async (req: Request, res: Response): Promise<void> => 
 export const updateZone = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const zoneId = req.params.id;
+    const zoneId = req.params.id as string;
     const { name, type, shape, coordinates, radius } = req.body;
 
     // Verify ownership
@@ -140,7 +140,7 @@ export const updateZone = async (req: Request, res: Response): Promise<void> => 
 export const deleteZone = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const zoneId = req.params.id;
+    const zoneId = req.params.id as string;
 
     // Verify ownership
     const { data: existing } = await supabase
@@ -178,7 +178,7 @@ export const deleteZone = async (req: Request, res: Response): Promise<void> => 
 export const getAssignedVehicles = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const zoneId = req.params.id;
+    const zoneId = req.params.id as string;
 
     // Verify ownership
     const { data: existing } = await supabase.from('zones').select('id').eq('id', zoneId).eq('owner_id', ownerId).single();
@@ -201,7 +201,7 @@ export const getAssignedVehicles = async (req: Request, res: Response): Promise<
 export const assignVehiclesToZone = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const zoneId = req.params.id;
+    const zoneId = req.params.id as string;
     const { vehicleIds } = req.body; // Array of vehicle IDs
 
     if (!Array.isArray(vehicleIds)) {

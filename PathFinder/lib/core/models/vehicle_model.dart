@@ -21,10 +21,7 @@ class VehicleModel {
   final String connectionMode;
   final int gpsSignalStrength;
   final double? engineTemperature;
-  final double batteryVoltage;
-  final int? _batteryPercentage;
   final bool engineRunning;
-  final bool charging;
   final bool powerCut;
   final int currentDriverId;
   final String? emergencyContact;
@@ -52,23 +49,13 @@ class VehicleModel {
     this.connectionMode = 'GPRS',
     this.gpsSignalStrength = 4,
     this.engineTemperature,
-    this.batteryVoltage = 12.0,
-    int? batteryPercentage,
     this.engineRunning = false,
-    this.charging = false,
     this.powerCut = false,
     this.currentDriverId = -1,
     this.emergencyContact,
     this.gpsFix = true,
     this.fixAgeS = 0,
-  }) : _batteryPercentage = batteryPercentage;
-
-  int get batteryPercentage {
-    if (_batteryPercentage != null) return _batteryPercentage!;
-    if (batteryVoltage >= 12.6) return 100;
-    if (batteryVoltage <= 11.9) return 0;
-    return ((batteryVoltage - 11.9) / (12.6 - 11.9) * 100).round();
-  }
+  });
 
   VehicleModel copyWith({
     String? vehicleId,
@@ -91,10 +78,7 @@ class VehicleModel {
     String? connectionMode,
     int? gpsSignalStrength,
     double? engineTemperature,
-    double? batteryVoltage,
-    int? batteryPercentage,
     bool? engineRunning,
-    bool? charging,
     bool? powerCut,
     int? currentDriverId,
     String? emergencyContact,
@@ -122,10 +106,7 @@ class VehicleModel {
       connectionMode: connectionMode ?? this.connectionMode,
       gpsSignalStrength: gpsSignalStrength ?? this.gpsSignalStrength,
       engineTemperature: engineTemperature ?? this.engineTemperature,
-      batteryVoltage: batteryVoltage ?? this.batteryVoltage,
-      batteryPercentage: batteryPercentage ?? this._batteryPercentage,
       engineRunning: engineRunning ?? this.engineRunning,
-      charging: charging ?? this.charging,
       powerCut: powerCut ?? this.powerCut,
       currentDriverId: currentDriverId ?? this.currentDriverId,
       emergencyContact: emergencyContact ?? this.emergencyContact,
@@ -168,10 +149,7 @@ class VehicleModel {
       connectionMode: json['connectionMode'] ?? 'GPRS',
       gpsSignalStrength: json['gpsSignalStrength'] ?? 4,
       engineTemperature: (json['engine_temperature'] as num?)?.toDouble(),
-      batteryVoltage: (json['battery_voltage'] ?? 12.0).toDouble(),
-      batteryPercentage: json['battery'],
       engineRunning: json['acc'] ?? false,
-      charging: json['charging'] ?? false,
       powerCut: json['power_cut'] ?? false,
       currentDriverId: json['current_driver_id'] ?? -1,
       emergencyContact: json['emergency_contact'] ?? json['emergencyContact'],

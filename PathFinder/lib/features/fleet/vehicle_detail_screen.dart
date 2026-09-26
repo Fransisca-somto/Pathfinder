@@ -67,6 +67,8 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
     if (vehicle.currentDriverId > 0) {
       final match = fingerprints.where((f) => f.slotId == vehicle.currentDriverId).firstOrNull;
       driverDisplay = match?.driverName ?? 'Driver ${vehicle.currentDriverId}';
+    } else if (vehicle.isEngineLocked) {
+      driverDisplay = 'Authentication Required';
     } else if (vehicle.assignedDrivers.isNotEmpty) {
       driverDisplay = 'Assigned: ${vehicle.assignedDrivers.join(', ')}';
     }
@@ -232,21 +234,27 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                               Row(
                                 children: [
                                   Icon(
-                                    vehicle.currentDriverId > 0 ? Icons.how_to_reg : Icons.person, 
+                                    vehicle.currentDriverId > 0 
+                                        ? Icons.how_to_reg 
+                                        : (vehicle.isEngineLocked ? Icons.lock_outline : Icons.person), 
                                     size: 14, 
                                     color: vehicle.currentDriverId > 0 
                                         ? AppColors.success 
-                                        : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)
+                                        : (vehicle.isEngineLocked 
+                                            ? AppColors.warning 
+                                            : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight))
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     driverDisplay,
                                     style: TextStyle(
                                       fontSize: 14,
-                                      fontWeight: vehicle.currentDriverId > 0 ? FontWeight.bold : FontWeight.normal,
+                                      fontWeight: (vehicle.currentDriverId > 0 || vehicle.isEngineLocked) ? FontWeight.bold : FontWeight.normal,
                                       color: vehicle.currentDriverId > 0 
                                           ? AppColors.success
-                                          : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                                          : (vehicle.isEngineLocked 
+                                              ? AppColors.warning 
+                                              : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)),
                                     ),
                                   ),
                                 ],
@@ -287,16 +295,9 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                 Builder(
                   builder: (context) {
                     final speed = vehicle.currentSpeed;
-                    final batteryVoltage = vehicle.batteryVoltage;
-                    final batteryPct = vehicle.batteryPercentage;
                     final gsm = vehicle.gpsSignalStrength.toDouble();
                     final isEngineCutOff = vehicle.isEngineLocked;
                     final isFuelCutOff = false; // Mock for now
-
-                    // Battery display: show "Charging" when alternator is running
-                    final batteryDisplay = vehicle.charging 
-                        ? '${batteryVoltage.toStringAsFixed(1)}V (Charging)'
-                        : '${batteryVoltage.toStringAsFixed(1)}V ($batteryPct%)';
 
                     return Column(
                       children: [
@@ -337,7 +338,13 @@ class _VehicleDetailScreenState extends ConsumerState<VehicleDetailScreen> with 
                           childAspectRatio: 1.5,
                           children: [
                             _buildMetricCard('Speed', '${speed.toStringAsFixed(1)} km/h', Icons.speed, isDark),
-                            _buildMetricCard('Battery', batteryDisplay, vehicle.charging ? Icons.battery_charging_full : Icons.battery_full, isDark, isWarning: vehicle.powerCut),
+                            _buildMetricCard(
+                              'Power',
+                              vehicle.powerCut ? 'Disconnected' : 'Main Power',
+                              vehicle.powerCut ? Icons.power_off : Icons.bolt,
+                              isDark,
+                              isWarning: vehicle.powerCut
+                            ),
                             _buildMetricCard('Engine Temp', vehicle.engineTemperature != null ? '${vehicle.engineTemperature!.toStringAsFixed(1)}°C' : 'N/A', Icons.thermostat, isDark, isWarning: (vehicle.engineTemperature ?? 0) > 105.0),
                             _buildMetricCard('Engine', vehicle.engineRunning ? 'RUNNING' : 'OFF', Icons.power_settings_new, isDark, isWarning: vehicle.isEngineLocked),
                           ],

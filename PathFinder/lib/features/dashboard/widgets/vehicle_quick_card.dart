@@ -41,6 +41,8 @@ class VehicleQuickCard extends ConsumerWidget {
     if (vehicle.currentDriverId > 0) {
       final match = fingerprints.where((f) => f.slotId == vehicle.currentDriverId).firstOrNull;
       driverDisplay = match?.driverName ?? 'Driver ${vehicle.currentDriverId}';
+    } else if (vehicle.isEngineLocked) {
+      driverDisplay = 'Auth Required';
     } else if (vehicle.assignedDrivers.isNotEmpty) {
       driverDisplay = 'Assigned';
     }
@@ -139,18 +141,26 @@ class VehicleQuickCard extends ConsumerWidget {
                 isDark: isDark,
               ),
               _TelemetryItem(
-                icon: vehicle.charging ? Icons.battery_charging_full : Icons.battery_full,
-                label: 'Battery',
-                value: vehicle.charging 
-                    ? '${vehicle.batteryVoltage.toStringAsFixed(1)}V (Charging)'
-                    : '${vehicle.batteryVoltage.toStringAsFixed(1)}V (${vehicle.batteryPercentage}%)',
+                icon: vehicle.powerCut ? Icons.power_off : Icons.bolt,
+                label: 'Power',
+                value: vehicle.powerCut ? 'Cut' : 'Main',
                 isDark: isDark,
+                valueColor: vehicle.powerCut ? AppColors.danger : null,
+                iconColor: vehicle.powerCut ? AppColors.danger : null,
               ),
               _TelemetryItem(
-                icon: vehicle.currentDriverId > 0 ? Icons.how_to_reg : Icons.person,
+                icon: vehicle.currentDriverId > 0 
+                    ? Icons.how_to_reg 
+                    : (vehicle.isEngineLocked ? Icons.lock_outline : Icons.person),
                 label: 'Driver',
                 value: driverDisplay,
                 isDark: isDark,
+                valueColor: vehicle.currentDriverId > 0 
+                    ? AppColors.success 
+                    : (vehicle.isEngineLocked ? AppColors.warning : null),
+                iconColor: vehicle.currentDriverId > 0 
+                    ? AppColors.success 
+                    : (vehicle.isEngineLocked ? AppColors.warning : null),
               ),
             ],
           ),
@@ -233,26 +243,30 @@ class _TelemetryItem extends StatelessWidget {
   final String label;
   final String value;
   final bool isDark;
+  final Color? valueColor;
+  final Color? iconColor;
 
   const _TelemetryItem({
     required this.icon,
     required this.label,
     required this.value,
     required this.isDark,
+    this.valueColor,
+    this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+        Icon(icon, color: iconColor ?? (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)),
         const SizedBox(height: 8),
         Text(
           value,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.bold,
-            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+            color: valueColor ?? (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
           ),
         ),
         const SizedBox(height: 4),
@@ -268,35 +282,52 @@ class _TelemetryItem extends StatelessWidget {
   }
 }
 
-class _EngineControlSheet extends StatefulWidget {
+class _EngineControlSheet extends ConsumerStatefulWidget {
   final VehicleModel vehicle;
   
   const _EngineControlSheet({required this.vehicle});
 
   @override
-  State<_EngineControlSheet> createState() => _EngineControlSheetState();
+  ConsumerState<_EngineControlSheet> createState() => _EngineControlSheetState();
 }
 
-class _EngineControlSheetState extends State<_EngineControlSheet> {
+class _EngineControlSheetState extends ConsumerState<_EngineControlSheet> {
   bool _isLoading = false;
   bool _stepTwo = false;
 
   void _handleCutOff() async {
-    if (!_stepTwo) {
+    if (!_stepTwo && !widget.vehicle.isEngineLocked) {
       setState(() => _stepTwo = true);
       return;
     }
 
     setState(() => _isLoading = true);
-    // Simulate MQTT relay cut-off command
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
     
-    setState(() => _isLoading = false);
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Engine cut-off command sent successfully.'), backgroundColor: AppColors.danger),
-    );
+    try {
+      final bypassState = widget.vehicle.isEngineLocked;
+      await ref.read(apiClientProvider).post('/vehicles/${widget.vehicle.vehicleId}/auth-bypass', {
+        'state': bypassState
+      });
+      
+      // Invalidate to fetch the updated DB state
+      ref.invalidate(vehiclesProvider);
+      
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(bypassState ? 'Engine unlocked successfully.' : 'Engine cut-off command sent successfully.'), 
+          backgroundColor: bypassState ? AppColors.success : AppColors.danger
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send engine command'), backgroundColor: AppColors.danger),
+      );
+    }
   }
 
   @override
@@ -317,10 +348,14 @@ class _EngineControlSheetState extends State<_EngineControlSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.warning_amber_rounded, size: 64, color: AppColors.danger),
+            Icon(
+              widget.vehicle.isEngineLocked ? Icons.check_circle_outline : Icons.warning_amber_rounded, 
+              size: 64, 
+              color: widget.vehicle.isEngineLocked ? AppColors.success : AppColors.danger
+            ),
             const SizedBox(height: 16),
             Text(
-              'Emergency Engine Cut-Off',
+              widget.vehicle.isEngineLocked ? 'Unlock Engine' : 'Emergency Engine Cut-Off',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
@@ -330,9 +365,11 @@ class _EngineControlSheetState extends State<_EngineControlSheet> {
             ),
             const SizedBox(height: 16),
             Text(
-              _stepTwo
-                  ? 'WARNING: This action will disable the starter relay for ${widget.vehicle.vehicleName}. The vehicle will not be able to restart until you manually enable it. Are you absolutely sure?'
-                  : 'You are about to disable the engine starter for ${widget.vehicle.vehicleName}. This should only be used in emergencies (e.g., theft).',
+              widget.vehicle.isEngineLocked
+                  ? 'This will restore the starter relay for ${widget.vehicle.vehicleName}, allowing it to be started normally.'
+                  : (_stepTwo
+                      ? 'WARNING: This action will disable the starter relay for ${widget.vehicle.vehicleName}. The vehicle will not be able to restart until you manually enable it. Are you absolutely sure?'
+                      : 'You are about to disable the engine starter for ${widget.vehicle.vehicleName}. This should only be used in emergencies (e.g., theft).'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -341,8 +378,10 @@ class _EngineControlSheetState extends State<_EngineControlSheet> {
             ),
             const SizedBox(height: 32),
             CustomButton(
-              label: _stepTwo ? 'CONFIRM DISABLE ENGINE' : 'Disable Starter',
-              color: AppColors.danger,
+              label: widget.vehicle.isEngineLocked 
+                  ? 'Unlock Engine' 
+                  : (_stepTwo ? 'CONFIRM DISABLE ENGINE' : 'Disable Starter'),
+              color: widget.vehicle.isEngineLocked ? AppColors.success : AppColors.danger,
               isLoading: _isLoading,
               onPressed: _handleCutOff,
             ),

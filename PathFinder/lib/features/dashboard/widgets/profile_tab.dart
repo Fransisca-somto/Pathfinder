@@ -4,6 +4,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/enums/user_role.dart';
 import '../../../core/routes/app_routes.dart';
+import '../../../core/services/auth_service.dart';
 
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
@@ -183,9 +184,18 @@ class ProfileTab extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: TextButton.icon(
-                onPressed: () {
-                  // Perform logout (just navigate to login screen for mock)
-                  Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (route) => false);
+                onPressed: () async {
+                  // Show a brief loading state so the button doesn't feel dead
+                  // while the server revocation round-trip completes.
+                  final authService = ref.read(authServiceProvider);
+                  await authService.logout();
+                  if (context.mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppRoutes.login,
+                      (route) => false,
+                    );
+                  }
                 },
                 icon: const Icon(Icons.logout, color: AppColors.danger),
                 label: const Text(

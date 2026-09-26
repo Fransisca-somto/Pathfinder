@@ -132,9 +132,6 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
           : null;
       final hasTempKey = data.containsKey('temperature');
       final acc = data['acc'] as bool?;
-      final batteryPct = data['battery'] as int?;
-      final batteryVoltage = (data['battery_voltage'] as num?)?.toDouble();
-      final isCharging = data['charging'] as bool?;
       final isPowerCut = data['power_cut'] as bool?;
       final driverId = data['driverId'] as int?;
       final statusStr = data['status'] as String?;
@@ -156,9 +153,6 @@ class VehiclesNotifier extends AsyncNotifier<List<VehicleModel>> {
             engineTemperature: hasTempKey ? temp : v.engineTemperature,
             currentStatus: parsedStatus ?? v.currentStatus,
             engineRunning: acc ?? v.engineRunning,
-            batteryPercentage: batteryPct ?? v.batteryPercentage,
-            batteryVoltage: batteryVoltage ?? v.batteryVoltage,
-            charging: isCharging ?? v.charging,
             powerCut: isPowerCut ?? v.powerCut,
             currentDriverId: driverId ?? v.currentDriverId,
           ) else v

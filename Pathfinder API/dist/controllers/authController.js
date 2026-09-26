@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCurrentUser = exports.login = exports.register = void 0;
+exports.getCurrentUser = exports.logout = exports.refreshToken = exports.login = exports.register = void 0;
 const supabase_1 = require("../config/supabase");
 // Map Supabase User to our PathFinder UserModel format
 const mapToUserModel = (supabaseUser, userRole = 'owner') => {
@@ -30,22 +30,33 @@ const register = async (req, res) => {
         });
         if (error) {
             console.error('[Register] Supabase signUp error:', error.message, error);
+            // Supabase returns code 'user_already_exists' (422) when the email is taken.
+            // Map it to a clean 409 so the client can show a sensible message.
+            if (error.code === 'user_already_exists') {
+                res.status(409).json({ error: 'An account with this email already exists. Please log in instead.' });
+                return;
+            }
             res.status(400).json({ error: error.message });
             return;
         }
         if (data.user) {
             // Insert into public.users immediately so we can link them to vehicles easily
-            await supabase_1.supabase.from('users').insert({
+            const { error: profileError } = await supabase_1.supabase.from('users').insert({
                 id: data.user.id,
                 email: email,
                 full_name: fullName,
                 phone: phone || null,
                 role: role || 'owner'
             });
+            if (profileError) {
+                console.error('[Register] Failed to create public.users profile:', profileError);
+            }
         }
         if (data.session && data.user) {
             res.status(201).json({
                 token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+                expires_in: data.session.expires_in,
                 user: mapToUserModel(data.user)
             });
             return;
@@ -75,6 +86,8 @@ const login = async (req, res) => {
         if (data.session && data.user) {
             res.status(200).json({
                 token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+                expires_in: data.session.expires_in,
                 user: mapToUserModel(data.user)
             });
             return;
@@ -85,6 +98,65 @@ const login = async (req, res) => {
     }
 };
 exports.login = login;
+// POST /auth/refresh — exchange a valid refresh token for a new access token.
+// Supabase rotates the refresh token on every use, so the response always
+// carries a new refresh_token that must replace the stored one.
+const refreshToken = async (req, res) => {
+    const { refresh_token } = req.body;
+    if (!refresh_token) {
+        res.status(400).json({ error: 'refresh_token is required' });
+        return;
+    }
+    try {
+        const { data, error } = await supabase_1.supabase.auth.refreshSession({ refresh_token });
+        if (error || !data.session) {
+            console.warn('[Auth] Refresh failed:', error?.message);
+            res.status(401).json({ error: 'Invalid or expired refresh token' });
+            return;
+        }
+        res.status(200).json({
+            token: data.session.access_token,
+            refresh_token: data.session.refresh_token, // rotated — client must persist this
+            expires_in: data.session.expires_in,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+};
+exports.refreshToken = refreshToken;
+// POST /auth/logout — revokes the refresh token for THIS session only.
+// Using 'local' scope means the user's other devices (tablet, laptop, etc.)
+// stay signed in. The revoked refresh token cannot be replayed after this call.
+const logout = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+            res.status(204).send();
+            return;
+        }
+        const accessToken = authHeader.split(' ')[1];
+        if (!accessToken) {
+            res.status(204).send();
+            return;
+        }
+        // admin.signOut(jwt, 'local') revokes only the refresh token that this
+        // access token belongs to — all other sessions for this user are untouched.
+        const { error } = await supabase_1.supabase.auth.admin.signOut(accessToken, 'local');
+        if (error) {
+            console.warn('[Auth] Server-side signOut returned error:', error.message);
+        }
+        else {
+            console.log('[Auth] Session revoked server-side for token prefix:', accessToken.substring(0, 10));
+        }
+    }
+    catch (err) {
+        // Best-effort — always respond 204 so the client still clears its state
+        console.warn('[Auth] Server-side signOut threw:', err);
+    }
+    res.status(204).send();
+};
+exports.logout = logout;
 const getCurrentUser = async (req, res) => {
     // req.user is attached by the authenticateUser middleware
     if (!req.user) {

@@ -33,7 +33,7 @@ export const getAlerts = async (req: Request, res: Response): Promise<void> => {
 export const markAlertAsRead = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const alertId = req.params.id;
+    const alertId = req.params.id as string;
 
     // Verify ownership before updating
     const { data: alert } = await supabase
@@ -70,7 +70,7 @@ export const markAlertAsRead = async (req: Request, res: Response): Promise<void
 export const deleteAlert = async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = req.user.id;
-    const alertId = req.params.id;
+    const alertId = req.params.id as string;
 
     // Verify ownership before deleting
     const { data: alert } = await supabase

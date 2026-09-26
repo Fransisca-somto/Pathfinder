@@ -3,18 +3,27 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.setEmergencyContact = exports.getTrips = exports.assignDriver = exports.updateVehicle = exports.deleteVehicle = exports.getVehicleById = exports.getVehicles = exports.registerVehicle = exports.soundAlarm = exports.setAuthBypass = exports.toggleFingerprintStatus = exports.deleteFingerprint = exports.addFingerprint = exports.getFingerprints = void 0;
 const supabase_1 = require("../config/supabase");
 const mqttService_1 = require("../services/mqttService");
+// ---------------------------------------------------------------------------
+// Access-check helper
+// ---------------------------------------------------------------------------
+// Verifies a user has access to a vehicle via the vehicle_users join table.
+// Returns the vehicle row (plus any extra columns in selectCols) or null.
+// Every endpoint uses this instead of the old .eq('owner_id', userId) pattern.
+const checkVehicleAccess = async (vehicleId, userId, selectCols = 'id') => {
+    const { data } = await supabase_1.supabase
+        .from('vehicles')
+        .select(`${selectCols}, vehicle_users!inner(user_id)`)
+        .eq('id', vehicleId)
+        .eq('vehicle_users.user_id', userId)
+        .single();
+    return data ?? null;
+};
 // GET /vehicles/:id/fingerprints
 const getFingerprints = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId);
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -40,23 +49,15 @@ exports.getFingerprints = getFingerprints;
 // POST /vehicles/:id/fingerprints (Adds to DB and triggers ESP32 enrollment)
 const addFingerprint = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const { driverName } = req.body;
         if (!driverName) {
             res.status(400).json({ error: 'driverName is required' });
             return;
         }
-        console.log(`[DEBUG] POST /vehicles/${vehicleId}/fingerprints - ownerId: ${ownerId}`);
-        const { data: vehicle, error: vehicleErr } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
-        if (vehicleErr) {
-            console.log(`[DEBUG] Vehicle query error:`, vehicleErr);
-        }
+        console.log(`[DEBUG] POST /vehicles/${vehicleId}/fingerprints - userId: ${userId}`);
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -85,7 +86,8 @@ const addFingerprint = async (req, res) => {
             status: 'pending'
         });
         if (error) {
-            res.status(500).json({ error: 'Failed to insert profile' });
+            console.error('[Vehicle] Failed to insert profile:', error);
+            res.status(500).json({ error: error.message || 'Failed to insert profile', details: error.details, hint: error.hint });
             return;
         }
         (0, mqttService_1.publishCommand)(vehicle.device_id, 'enrollFingerprint', { driverId: nextSlotId });
@@ -97,19 +99,13 @@ const addFingerprint = async (req, res) => {
     }
 };
 exports.addFingerprint = addFingerprint;
-// DELETE /vehicles/:id/fingerprints/:driverId
+// DELETE /vehicles/:id/fingerprints/:slotId
 const deleteFingerprint = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const slotId = parseInt(req.params.slotId);
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -135,7 +131,7 @@ exports.deleteFingerprint = deleteFingerprint;
 // POST /vehicles/:id/fingerprints/:slotId/toggle
 const toggleFingerprintStatus = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const slotId = parseInt(req.params.slotId);
         const { isActive } = req.body;
@@ -143,13 +139,7 @@ const toggleFingerprintStatus = async (req, res) => {
             res.status(400).json({ error: 'isActive boolean is required' });
             return;
         }
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -177,15 +167,10 @@ exports.toggleFingerprintStatus = toggleFingerprintStatus;
 // POST /vehicles/:id/auth-bypass
 const setAuthBypass = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const { state } = req.body; // boolean
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -208,15 +193,10 @@ exports.setAuthBypass = setAuthBypass;
 // POST /vehicles/:id/alarm
 const soundAlarm = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const { state } = req.body; // boolean
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
@@ -235,50 +215,113 @@ const soundAlarm = async (req, res) => {
     }
 };
 exports.soundAlarm = soundAlarm;
-// POST /vehicles/register — Owner claims a device
+// POST /vehicles/register — Claim a device by its ID
 const registerVehicle = async (req, res) => {
     try {
         const { name, plateNumber, type } = req.body;
         const deviceId = req.body.deviceId?.toUpperCase();
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         if (!deviceId || !name || !plateNumber) {
             res.status(400).json({ error: 'deviceId, name, and plateNumber are required' });
             return;
         }
-        // Check if this device is already claimed by someone
+        // TODO: SECURITY — Replace this open-claim flow with an invitation or approval
+        // flow before any non-team users access the system. Knowing a device ID is
+        // currently sufficient to gain full control of someone's vehicle immobiliser,
+        // including live location tracking, engine lock/unlock, and alarm control.
+        // Ensure the claiming user exists in public.users before touching vehicle_users.
+        // The auth trigger should create this row on signup, but it can be missing for
+        // accounts created before the trigger was installed or via the Supabase dashboard.
+        // We check explicitly and insert only when needed so we always see the real error.
+        const { data: existingUserRow } = await supabase_1.supabase
+            .from('users')
+            .select('id')
+            .eq('id', userId)
+            .single();
+        if (!existingUserRow) {
+            // Validate role against the user_role enum — anything outside this set
+            // causes a silent upsert failure which then surfaces as an FK error later.
+            const VALID_ROLES = ['owner', 'manager', 'driver'];
+            const rawRole = req.user.user_metadata?.role;
+            const safeRole = VALID_ROLES.includes(rawRole) ? rawRole : 'owner';
+            const { error: createUserError } = await supabase_1.supabase.from('users').insert({
+                id: userId,
+                email: req.user.email ?? '',
+                full_name: req.user.user_metadata?.full_name ?? req.user.email?.split('@')[0] ?? 'User',
+                role: safeRole,
+            });
+            if (createUserError) {
+                console.error('[Vehicle] Failed to create public.users row for authenticated user:', createUserError);
+                res.status(500).json({ error: 'Failed to set up user profile. Please try again.' });
+                return;
+            }
+            console.log(`[Vehicle] Created missing public.users row for ${userId}`);
+        }
+        // Check if this device is already registered
         const { data: existing } = await supabase_1.supabase
             .from('vehicles')
-            .select('id, owner_id')
-            .eq('device_id', deviceId)
+            .select('id')
+            .ilike('device_id', deviceId)
             .single();
         if (existing) {
-            if (existing.owner_id === ownerId) {
-                res.status(409).json({ error: 'You have already registered this device' });
+            // Device already exists — add the calling user to vehicle_users.
+            // If they already have access, the PRIMARY KEY constraint fires (code 23505).
+            const { error: linkError } = await supabase_1.supabase
+                .from('vehicle_users')
+                .insert({ vehicle_id: existing.id, user_id: userId, role: 'owner' });
+            if (linkError?.code === '23505') {
+                res.status(409).json({ error: 'You already have access to this device' });
+                return;
             }
-            else {
-                res.status(409).json({ error: 'This device is already claimed by another user' });
+            if (linkError) {
+                console.error('[Vehicle] Failed to link user to existing vehicle:', linkError);
+                res.status(500).json({ error: 'Failed to claim device' });
+                return;
             }
+            // Update vehicle data with what the new claimer provided so a re-registration
+            // (after a previous user deleted their access) always reflects fresh data.
+            const { data: vehicle, error: updateError } = await supabase_1.supabase
+                .from('vehicles')
+                .update({
+                name,
+                plate_number: plateNumber,
+                type: type || 'Car',
+            })
+                .eq('id', existing.id)
+                .select()
+                .single();
+            if (updateError) {
+                console.error('[Vehicle] Failed to update vehicle data on re-claim:', updateError);
+            }
+            // Invalidate the MQTT users cache so the new claimant starts receiving telemetry
+            (0, mqttService_1.clearDeviceCache)(deviceId);
+            console.log(`[Vehicle] Device ${deviceId} claimed by user ${userId} — vehicle data updated`);
+            res.status(200).json({ message: 'Device claimed successfully', vehicle });
             return;
         }
-        // Register the vehicle
+        // First claim — insert the vehicle row and link the user
         const { data, error } = await supabase_1.supabase
             .from('vehicles')
             .insert({
             device_id: deviceId,
-            name: name,
+            name,
             plate_number: plateNumber,
             type: type || 'Car',
-            owner_id: ownerId,
+            owner_id: userId, // kept for audit trail and existing RLS policies
             status: 'offline',
         })
             .select()
             .single();
-        if (error) {
+        if (error || !data) {
             console.error('[Vehicle] Register error:', error);
             res.status(500).json({ error: 'Failed to register vehicle' });
             return;
         }
-        console.log(`[Vehicle] Device ${deviceId} claimed by user ${ownerId}`);
+        // Link the first claimer into vehicle_users
+        await supabase_1.supabase
+            .from('vehicle_users')
+            .insert({ vehicle_id: data.id, user_id: userId, role: 'owner' });
+        console.log(`[Vehicle] Device ${deviceId} registered and claimed by user ${userId}`);
         res.status(201).json({ message: 'Vehicle registered successfully', vehicle: data });
     }
     catch (err) {
@@ -287,21 +330,41 @@ const registerVehicle = async (req, res) => {
     }
 };
 exports.registerVehicle = registerVehicle;
-// GET /vehicles — List all vehicles for the authenticated user
+// GET /vehicles — List every vehicle the authenticated user is linked to
 const getVehicles = async (req, res) => {
     try {
-        const ownerId = req.user.id;
-        const { data, error } = await supabase_1.supabase
-            .from('vehicles')
-            .select('*')
-            .eq('owner_id', ownerId)
-            .order('created_at', { ascending: false });
+        const userId = req.user.id;
+        // Query through vehicle_users so every claimant sees the vehicle,
+        // not only the original owner_id holder.
+        const { data: links, error } = await supabase_1.supabase
+            .from('vehicle_users')
+            .select('vehicles(*, vehicle_drivers(users(id, full_name)))')
+            .eq('user_id', userId);
         if (error) {
             console.error('[Vehicle] Fetch error:', error);
             res.status(500).json({ error: 'Failed to fetch vehicles' });
             return;
         }
-        res.status(200).json(data || []);
+        // Flatten and map vehicle_drivers -> drivers
+        const vehicles = (links ?? [])
+            .map((link) => {
+            const v = link.vehicles;
+            if (!v)
+                return null;
+            if (v.vehicle_drivers) {
+                v.drivers = v.vehicle_drivers.map((vd) => ({
+                    id: vd.users?.id,
+                    fullName: vd.users?.full_name
+                }));
+                delete v.vehicle_drivers;
+            }
+            else {
+                v.drivers = [];
+            }
+            return v;
+        })
+            .filter(Boolean);
+        res.status(200).json(vehicles);
     }
     catch (err) {
         console.error('[Vehicle] Fetch error:', err);
@@ -309,22 +372,27 @@ const getVehicles = async (req, res) => {
     }
 };
 exports.getVehicles = getVehicles;
-// GET /vehicles/:id — Get a single vehicle (only if owned by user)
+// GET /vehicles/:id — Get a single vehicle (only if user has access)
 const getVehicleById = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
-        const { data, error } = await supabase_1.supabase
-            .from('vehicles')
-            .select('*')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
-        if (error || !data) {
+        const vehicle = await checkVehicleAccess(vehicleId, userId, '*, vehicle_drivers(users(id, full_name))');
+        if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
         }
-        res.status(200).json(data);
+        if (vehicle.vehicle_drivers) {
+            vehicle.drivers = vehicle.vehicle_drivers.map((vd) => ({
+                id: vd.users?.id,
+                fullName: vd.users?.full_name
+            }));
+            delete vehicle.vehicle_drivers;
+        }
+        else {
+            vehicle.drivers = [];
+        }
+        res.status(200).json(vehicle);
     }
     catch (err) {
         console.error('[Vehicle] Fetch error:', err);
@@ -332,32 +400,51 @@ const getVehicleById = async (req, res) => {
     }
 };
 exports.getVehicleById = getVehicleById;
-// DELETE /vehicles/:id — Remove a vehicle (unclaim the device)
+// DELETE /vehicles/:id — Remove the calling user's access.
+// If they were the last linked user, the vehicle row is also deleted.
 const deleteVehicle = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
-        // Verify ownership before deleting
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('id, device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
-            res.status(404).json({ error: 'Vehicle not found or you do not own it' });
+            res.status(404).json({ error: 'Vehicle not found or you do not have access' });
             return;
         }
-        const { error } = await supabase_1.supabase
-            .from('vehicles')
+        // Remove this user's link only
+        const { error: unlinkError } = await supabase_1.supabase
+            .from('vehicle_users')
             .delete()
-            .eq('id', vehicleId);
-        if (error) {
-            console.error('[Vehicle] Delete error:', error);
-            res.status(500).json({ error: 'Failed to delete vehicle' });
+            .eq('vehicle_id', vehicleId)
+            .eq('user_id', userId);
+        if (unlinkError) {
+            console.error('[Vehicle] Unlink error:', unlinkError);
+            res.status(500).json({ error: 'Failed to remove vehicle access' });
             return;
         }
-        console.log(`[Vehicle] Device ${vehicle.device_id} unclaimed by user ${ownerId}`);
+        // Check whether any users are still linked
+        const { count } = await supabase_1.supabase
+            .from('vehicle_users')
+            .select('*', { count: 'exact', head: true })
+            .eq('vehicle_id', vehicleId);
+        if (count === 0) {
+            // Last user removed — delete the vehicle row entirely
+            const { error: deleteError } = await supabase_1.supabase
+                .from('vehicles')
+                .delete()
+                .eq('id', vehicleId);
+            if (deleteError) {
+                console.error('[Vehicle] Delete error:', deleteError);
+                res.status(500).json({ error: 'Failed to delete vehicle' });
+                return;
+            }
+            console.log(`[Vehicle] Device ${vehicle.device_id} fully deleted — no remaining users`);
+        }
+        else {
+            console.log(`[Vehicle] User ${userId} unlinked from device ${vehicle.device_id} (${count} user(s) remaining)`);
+        }
+        // Invalidate MQTT cache so the departed user stops receiving telemetry
+        (0, mqttService_1.clearDeviceCache)(vehicle.device_id);
         res.status(200).json({ message: 'Vehicle removed successfully' });
     }
     catch (err) {
@@ -369,29 +456,17 @@ exports.deleteVehicle = deleteVehicle;
 // PUT /vehicles/:id — Update vehicle settings
 const updateVehicle = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const { name, plate_number, type, update_interval, connection_mode } = req.body;
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
-        if (!vehicle) {
-            res.status(404).json({ error: 'Vehicle not found or you do not own it' });
+        const access = await checkVehicleAccess(vehicleId, userId);
+        if (!access) {
+            res.status(404).json({ error: 'Vehicle not found or you do not have access' });
             return;
         }
         const { data, error } = await supabase_1.supabase
             .from('vehicles')
-            .update({
-            name,
-            plate_number,
-            type,
-            update_interval,
-            connection_mode
-        })
+            .update({ name, plate_number, type, update_interval, connection_mode })
             .eq('id', vehicleId)
             .select()
             .single();
@@ -411,22 +486,16 @@ exports.updateVehicle = updateVehicle;
 // POST /vehicles/:id/drivers — Assign a driver to a vehicle by email
 const assignDriver = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         const { email } = req.body;
         if (!email) {
             res.status(400).json({ error: 'Driver email is required' });
             return;
         }
-        // Verify the owner actually owns this vehicle
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
-        if (!vehicle) {
-            res.status(404).json({ error: 'Vehicle not found or you do not own it' });
+        const access = await checkVehicleAccess(vehicleId, userId);
+        if (!access) {
+            res.status(404).json({ error: 'Vehicle not found or you do not have access' });
             return;
         }
         // 1. Check if the user already exists in public.users
@@ -487,16 +556,10 @@ exports.assignDriver = assignDriver;
 // GET /vehicles/:id/trips — Get history of trips for a vehicle
 const getTrips = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
-        if (!vehicle) {
+        const access = await checkVehicleAccess(vehicleId, userId);
+        if (!access) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;
         }
@@ -521,7 +584,7 @@ exports.getTrips = getTrips;
 // POST /vehicles/:id/emergency-contact
 const setEmergencyContact = async (req, res) => {
     try {
-        const ownerId = req.user.id;
+        const userId = req.user.id;
         const vehicleId = req.params.id;
         let { phoneNumber } = req.body;
         if (!phoneNumber) {
@@ -540,13 +603,7 @@ const setEmergencyContact = async (req, res) => {
             res.status(400).json({ error: 'Invalid phone number format' });
             return;
         }
-        // Verify ownership
-        const { data: vehicle } = await supabase_1.supabase
-            .from('vehicles')
-            .select('device_id')
-            .eq('id', vehicleId)
-            .eq('owner_id', ownerId)
-            .single();
+        const vehicle = await checkVehicleAccess(vehicleId, userId, 'id, device_id');
         if (!vehicle) {
             res.status(404).json({ error: 'Vehicle not found' });
             return;

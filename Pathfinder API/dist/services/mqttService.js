@@ -13,8 +13,9 @@ const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com
 const TELEMETRY_TOPIC = 'pathfinder/telemetry';
 const ALERTS_TOPIC = 'pathfinder/alerts';
 const STATUS_TOPIC = 'pathfinder/status';
-// Cache device-to-owner mappings so we don't hit the DB on every MQTT message
-const deviceOwnerCache = new Map();
+// Cache device-to-user-list mappings so we don't hit the DB on every MQTT message.
+// Values are arrays because multiple users may claim the same device.
+const deviceUsersCache = new Map();
 // Track previous status to detect trip start/end
 const deviceStatusCache = new Map();
 // Keep track of timeouts for each device to mark them offline after 2 minutes of silence
@@ -29,6 +30,9 @@ const deviceNoFixSince = new Map();
 const lastOverspeedAlerts = new Map();
 const OVERSPEED_THRESHOLD_KMPH = 80;
 const OVERSPEED_COOLDOWN_MS = 60000;
+// Cache last-known lock state per device so we only emit a WebSocket
+// event when engine_locked or auth_state actually changes.
+const deviceLockStateCache = new Map();
 // Deduplication cache for SD-card-queued and re-sent alerts.
 // Key: "deviceId|type|message|uptime" — Value: timestamp when cached.
 // Entries auto-expire after 60 seconds via setTimeout.
@@ -93,27 +97,32 @@ const publishCommand = (deviceId, command, payload = {}) => {
     console.log(`[MQTT] Published command to ${deviceId}:`, command);
 };
 exports.publishCommand = publishCommand;
-// Look up the owner of a device (with caching)
-const getDeviceOwner = async (deviceId) => {
-    // Check cache first
-    if (deviceOwnerCache.has(deviceId)) {
-        return deviceOwnerCache.get(deviceId);
+// Look up every user linked to a device via the vehicle_users join table.
+// Returns an empty array for unclaimed devices.
+const getDeviceUserIds = async (deviceId) => {
+    if (deviceUsersCache.has(deviceId)) {
+        return deviceUsersCache.get(deviceId);
     }
-    // Query Supabase
-    const { data, error } = await supabase_1.supabase
+    // Resolve the vehicle row first, then its linked users.
+    const { data: vehicle } = await supabase_1.supabase
         .from('vehicles')
-        .select('owner_id')
+        .select('id')
         .ilike('device_id', deviceId)
         .single();
-    if (error || !data) {
-        return null;
-    }
-    // Cache the result
-    deviceOwnerCache.set(deviceId, data.owner_id);
-    return data.owner_id;
+    if (!vehicle)
+        return [];
+    const { data: links, error } = await supabase_1.supabase
+        .from('vehicle_users')
+        .select('user_id')
+        .eq('vehicle_id', vehicle.id);
+    if (error || !links)
+        return [];
+    const userIds = links.map((l) => l.user_id);
+    deviceUsersCache.set(deviceId, userIds);
+    return userIds;
 };
 // Mark a device offline explicitly
-const markDeviceOffline = async (deviceId, ownerId) => {
+const markDeviceOffline = async (deviceId, userIds) => {
     console.log(`[MQTT] Device ${deviceId} is now offline.`);
     if (deviceTimeouts.has(deviceId)) {
         clearTimeout(deviceTimeouts.get(deviceId));
@@ -124,27 +133,27 @@ const markDeviceOffline = async (deviceId, ownerId) => {
         .from('vehicles')
         .update({ status: 'offline' })
         .ilike('device_id', deviceId);
-    // Notify Flutter App
-    (0, socketManager_1.emitLiveTelemetry)({
-        deviceId: deviceId,
-        status: 'offline',
-        timestamp: new Date().toISOString(),
-    }, ownerId);
+    // Fan out to every linked user's WebSocket room
+    const offlinePayload = { deviceId, status: 'offline', timestamp: new Date().toISOString() };
+    for (const uid of userIds) {
+        (0, socketManager_1.emitLiveTelemetry)(offlinePayload, uid);
+    }
 };
 // Reset the 120-second offline timeout for a device
-const resetDeviceTimeout = (deviceId, ownerId) => {
+const resetDeviceTimeout = (deviceId, userIds) => {
     if (deviceTimeouts.has(deviceId)) {
         clearTimeout(deviceTimeouts.get(deviceId));
     }
     const timeout = setTimeout(() => {
         console.log(`[MQTT] Device ${deviceId} timed out after 120 seconds of silence.`);
-        markDeviceOffline(deviceId, ownerId);
+        markDeviceOffline(deviceId, userIds);
     }, 120000); // 2 minutes
     deviceTimeouts.set(deviceId, timeout);
 };
-// Clear cache for a specific device (call this when a vehicle is registered or deleted)
+// Clear cache for a specific device (call when a vehicle is claimed, unclaimed, or deleted
+// so the next packet re-resolves the current user list from the DB).
 const clearDeviceCache = (deviceId) => {
-    deviceOwnerCache.delete(deviceId);
+    deviceUsersCache.delete(deviceId);
 };
 exports.clearDeviceCache = clearDeviceCache;
 // Handle explicit LWT / status messages
@@ -152,8 +161,8 @@ const handleStatus = async (data) => {
     const deviceId = data.deviceId?.toUpperCase();
     if (!deviceId)
         return;
-    const ownerId = await getDeviceOwner(deviceId);
-    if (!ownerId)
+    const userIds = await getDeviceUserIds(deviceId);
+    if (userIds.length === 0)
         return;
     if (data.status === 'offline') {
         const lastTime = lastTelemetryTimes.get(deviceId) || 0;
@@ -161,7 +170,7 @@ const handleStatus = async (data) => {
             console.log(`[MQTT] Ignoring stale offline status for ${deviceId}, telemetry received recently`);
             return;
         }
-        await markDeviceOffline(deviceId, ownerId);
+        await markDeviceOffline(deviceId, userIds);
     }
     else if (data.status === 'online') {
         console.log(`[MQTT] Device ${deviceId} reported online. Marking as parked.`);
@@ -174,12 +183,11 @@ const handleStatus = async (data) => {
             .from('vehicles')
             .update({ status: 'parked' })
             .ilike('device_id', deviceId);
-        // Notify Flutter App
-        (0, socketManager_1.emitLiveTelemetry)({
-            deviceId: deviceId,
-            status: 'parked',
-            timestamp: new Date().toISOString(),
-        }, ownerId);
+        // Fan out to all linked users
+        const onlinePayload = { deviceId, status: 'parked', timestamp: new Date().toISOString() };
+        for (const uid of userIds) {
+            (0, socketManager_1.emitLiveTelemetry)(onlinePayload, uid);
+        }
     }
 };
 // Handle incoming GPS telemetry from ESP32
@@ -204,16 +212,16 @@ const handleTelemetry = async (data) => {
         }
     }
     // ----------------------------
-    // Look up who owns this device
-    const ownerId = await getDeviceOwner(deviceId);
-    // Get vehicle_id for trips
+    // Resolve all users linked to this device
+    const userIds = await getDeviceUserIds(deviceId);
+    // Get vehicle_id for trip tracking
     let vehicleId = '';
-    if (ownerId) {
-        const { data } = await supabase_1.supabase.from('vehicles').select('id').ilike('device_id', deviceId).single();
-        if (data)
-            vehicleId = data.id;
+    if (userIds.length > 0) {
+        const { data: vRow } = await supabase_1.supabase.from('vehicles').select('id').ilike('device_id', deviceId).single();
+        if (vRow)
+            vehicleId = vRow.id;
     }
-    if (!ownerId) {
+    if (userIds.length === 0) {
         console.warn(`[MQTT] Unclaimed device: ${deviceId} — ignoring telemetry`);
         return;
     }
@@ -237,18 +245,24 @@ const handleTelemetry = async (data) => {
     if (data.temperature !== undefined && data.temperature !== null) {
         updatePayload.engine_temperature = data.temperature;
     }
-    if (data.battery_voltage !== undefined) {
-        updatePayload.battery_voltage = data.battery_voltage;
-    }
-    if (data.charging !== undefined) {
-        updatePayload.charging = data.charging;
-    }
     if (data.power_cut !== undefined) {
         updatePayload.power_cut = data.power_cut;
     }
-    if (data.driverId !== undefined) {
-        updatePayload.current_driver_id = data.driverId;
+    // --- AUTH / LOCK STATE (device is the source of truth) ---
+    // Written on every packet so the DB mirrors actual device state.
+    // Automatic re-arms (60 s start-window expiry, 120 s grace expiry)
+    // arrive here as telemetry and are captured without any alert event.
+    if (data.engine_locked !== undefined) {
+        updatePayload.is_engine_locked = data.engine_locked;
     }
+    if (data.auth_state !== undefined) {
+        updatePayload.auth_state = data.auth_state;
+    }
+    // driverId: -1 means nobody is authorised — store null, not -1.
+    if (data.driverId !== undefined) {
+        updatePayload.current_driver_id = data.driverId >= 1 ? data.driverId : null;
+    }
+    // ----------------------------------------------------------
     // Determine status
     let finalStatus = 'parked';
     if (data.status && data.status !== 'online') {
@@ -264,6 +278,29 @@ const handleTelemetry = async (data) => {
         .from('vehicles')
         .update(updatePayload)
         .ilike('device_id', deviceId);
+    // --- LOCK-STATE CHANGE DETECTION ---
+    // Emit a targeted WebSocket event whenever engine_locked or auth_state
+    // changes so the app's lock button updates immediately.
+    const newLocked = data.engine_locked ?? false;
+    const newAuthState = data.auth_state ?? 'armed';
+    const prevLock = deviceLockStateCache.get(deviceId);
+    if (prevLock === undefined ||
+        prevLock.engine_locked !== newLocked ||
+        prevLock.auth_state !== newAuthState) {
+        deviceLockStateCache.set(deviceId, { engine_locked: newLocked, auth_state: newAuthState });
+        // Fan out lock-state updates to all linked users immediately
+        const lockPayload = {
+            deviceId,
+            engine_locked: newLocked,
+            auth_state: newAuthState,
+            driverId: data.driverId >= 1 ? data.driverId : null,
+            timestamp: new Date().toISOString(),
+        };
+        for (const uid of userIds) {
+            (0, socketManager_1.emitLiveTelemetry)(lockPayload, uid);
+        }
+    }
+    // ------------------------------------
     // --- TRIP TRACKING LOGIC ---
     if (vehicleId) {
         const prevStatus = deviceStatusCache.get(deviceId) || 'parked';
@@ -314,7 +351,7 @@ const handleTelemetry = async (data) => {
         }
         // Evaluate against assigned zones (only if we have a real fix)
         if (hasValidCoords) {
-            await (0, zoneService_1.processVehicleLocation)(vehicleId, deviceId, data.lat, data.lng, data.acc, ownerId);
+            await (0, zoneService_1.processVehicleLocation)(vehicleId, deviceId, data.lat, data.lng, data.acc, userIds[0] ?? '');
         }
     }
     // ---------------------------
@@ -325,20 +362,21 @@ const handleTelemetry = async (data) => {
         lng: data.lng ?? data.last_lng,
         speed: data.speed,
         acc: data.acc,
-        battery: data.battery,
-        battery_voltage: data.battery_voltage,
-        charging: data.charging ?? false,
         power_cut: data.power_cut ?? false,
-        driverId: data.driverId ?? -1,
+        engine_locked: data.engine_locked ?? false,
+        auth_state: data.auth_state ?? 'armed',
+        driverId: data.driverId >= 1 ? data.driverId : null,
         temperature: data.temperature,
         status: finalStatus,
         gps_fix: hasGpsFix,
         fix_age_s: data.fix_age_s ?? 0,
         timestamp: new Date().toISOString(),
     };
-    // Forward ONLY to the owner's private WebSocket room
-    console.log(`[MQTT] Forwarding telemetry for device ${deviceId} to owner ${ownerId}. Status: ${finalStatus}`);
-    (0, socketManager_1.emitLiveTelemetry)(telemetryPayload, ownerId);
+    // Fan out to every user linked to this device
+    console.log(`[MQTT] Forwarding telemetry for device ${deviceId} to ${userIds.length} user(s). Status: ${finalStatus}`);
+    for (const uid of userIds) {
+        (0, socketManager_1.emitLiveTelemetry)(telemetryPayload, uid);
+    }
     if (finalStatus === 'offline') {
         if (deviceTimeouts.has(deviceId)) {
             clearTimeout(deviceTimeouts.get(deviceId));
@@ -346,7 +384,7 @@ const handleTelemetry = async (data) => {
         }
     }
     else {
-        resetDeviceTimeout(deviceId, ownerId);
+        resetDeviceTimeout(deviceId, userIds);
     }
     // Check for overspeeding
     if (data.speed && data.speed > OVERSPEED_THRESHOLD_KMPH) {
@@ -380,12 +418,12 @@ const triggerAlert = async (data) => {
     alertDedupeCache.set(dedupeKey, Date.now());
     setTimeout(() => alertDedupeCache.delete(dedupeKey), ALERT_DEDUPE_TTL_MS);
     // ---------------------
-    const ownerId = await getDeviceOwner(deviceId);
-    if (!ownerId) {
+    const userIds = await getDeviceUserIds(deviceId);
+    if (userIds.length === 0) {
         console.warn(`[MQTT] Alert from unclaimed device: ${deviceId} — ignoring`);
         return;
     }
-    console.log(`[MQTT] Alert from device ${deviceId} for owner ${ownerId}:`, data);
+    console.log(`[MQTT] Alert from device ${deviceId} for ${userIds.length} user(s):`, data);
     // Save alert to database
     const { data: vehicle } = await supabase_1.supabase
         .from('vehicles')
@@ -398,7 +436,7 @@ const triggerAlert = async (data) => {
             type: data.type || 'system',
             vehicle_id: vehicle.id,
             message: data.message || 'Alert from device',
-            owner_id: ownerId,
+            owner_id: userIds[0] ?? null,
             uptime: data.uptime ?? null,
             driver_id: data.driverId ?? null,
         }).select('id').single();
@@ -464,15 +502,18 @@ const triggerAlert = async (data) => {
             }
         }
     }
-    // Forward ONLY to the owner
-    (0, socketManager_1.emitNewAlert)({
+    // Fan out to every linked user
+    const alertPayload = {
         id: insertedAlertId,
         deviceId: deviceId,
         type: data.type || 'system',
         message: data.message || 'Alert from device',
         driverId: data.driverId ?? null,
         timestamp: new Date().toISOString(),
-    }, ownerId);
+    };
+    for (const uid of userIds) {
+        (0, socketManager_1.emitNewAlert)(alertPayload, uid);
+    }
 };
 exports.triggerAlert = triggerAlert;
 //# sourceMappingURL=mqttService.js.map
